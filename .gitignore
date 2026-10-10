@@ -7,3 +7,5 @@
 *.tgz
 .env
 .env.*
+
+__pycache__/

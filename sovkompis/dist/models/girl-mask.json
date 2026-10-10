@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "model": "girl.glb",
+  "sha256": "5ba92e0ea9bf6c6e731cbd95bc4aa1c7b0a9b152a7241629018ac25005341368",
+  "vertexCount": 22555,
+  "triangleCount": 21754,
+  "format": "float32-le-interleaved-hair-clothes",
+  "excludedTriangles": [
+    1522,
+    1523
+  ],
+  "visibleBounds": {
+    "min": [
+      -0.26879873871803284,
+      0.0,
+      0.1335449516773224
+    ],
+    "max": [
+      0.26879891753196716,
+      0.9248046875,
+      0.4333496689796448
+    ]
+  },
+  "maskedVertices": {
+    "hair": 7423,
+    "clothes": 9712
+  }
+}

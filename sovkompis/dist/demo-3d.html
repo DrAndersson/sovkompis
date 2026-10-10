@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f8f9f5"><title>Din sovkompis i 3D – Sovkompis demo</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./demo-3d.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.min.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Hoppa till innehållet</a>
+<div id="app">
+  <header class="header"><a class="brand demo-brand" href="./index.html"><img src="./favicon.svg" alt="" width="40" height="40">Sovkompis<span class="brand-dot">✦</span></a><nav class="demo-breadcrumb" aria-label="Navigering"><a href="./index.html#avatar">Din sovkompis</a><span>/</span><span aria-current="page">3D-demo</span></nav><span class="demo-tag">UTVECKLINGSDEMO</span></header>
+  <main id="main" class="inner-main demo-main">
+    <div class="page-heading"><div><div class="eyebrow">DIN SOVKOMPIS · EN TITT PÅ NÄSTA STEG</div><h1>Träffa din kompis i 3D.</h1><p>Välj en figur, prova färger och vänd på din kompis.</p></div><a class="text-button" href="./index.html#avatar">← Till 2D-versionen</a></div>
+    <div class="demo-layout">
+      <section class="panel demo-settings" aria-labelledby="model-heading">
+        <h2 id="model-heading"><span>01</span> Välj din figur</h2>
+        <div class="model-picker" role="group" aria-label="3D-modell"><button data-model="boy" class="model-option active" aria-pressed="true"><span class="model-symbol">☀</span><strong>Pojke</strong><small>Kort hår</small></button><button data-model="girl" class="model-option" aria-pressed="false"><span class="model-symbol">✿</span><strong>Flicka</strong><small>Långt hår</small></button></div>
+        <h2><span>02</span> Gör den till din</h2>
+        <fieldset class="color-group"><legend>Hårfärg</legend><div id="hair-swatches" class="demo-swatches"></div><label class="custom-color">Egen hårfärg <input id="hair-color" type="color" value="#594238" aria-label="Egen hårfärg"></label></fieldset>
+        <fieldset class="color-group"><legend>Klädfärg</legend><div id="clothes-swatches" class="demo-swatches"></div><label class="custom-color">Egen klädfärg <input id="clothes-color" type="color" value="#7fa99b" aria-label="Egen klädfärg"></label></fieldset>
+        <button class="text-button reset-colors" id="reset-colors">↺ Modellens originalfärger</button>
+        <p class="demo-save-note" id="save-note">Dina demoval sparas i den här webbläsaren.</p>
+      </section>
+      <section class="demo-viewer" aria-label="Interaktiv 3D-figur">
+        <div class="viewer-heading"><span class="scene-name" id="model-name">Din sovkompis</span><span class="live-badge"><span></span> RIKTIG 3D</span></div>
+        <div id="three-container" tabindex="0" aria-label="3D-figur. Dra för att rotera. Nyp eller använd zoomknapparna. Piltangenter roterar, plus och minus zoomar."></div>
+        <div class="load-state" id="load-state" role="status"><span class="loading-ring"></span><strong>Laddar din sovkompis…</strong><span>Modellen öppnas direkt i webbläsaren.</span></div>
+        <div class="viewer-tools" role="group" aria-label="Styr 3D-vyn"><button id="rotate-left" aria-label="Rotera åt vänster">↶</button><button id="rotate-right" aria-label="Rotera åt höger">↷</button><span></span><button id="zoom-in" aria-label="Zooma in">+</button><button id="zoom-out" aria-label="Zooma ut">−</button><span></span><button id="reset-view" aria-label="Visa figuren framifrån">Framifrån</button></div>
+        <p class="viewer-hint">Dra för att snurra · nyp för att zooma</p>
+      </section>
+      <aside class="demo-aside"><div class="small-spark">✧</div><h2>Samma kompis.<br>En ny dimension.</h2><p>Här kan du se hur nästa version kan kännas. Hår och kläder får egna färger, medan ansiktet behåller sitt uttryck.</p><div class="demo-note"><strong>En demo att utforska</strong><p>Övningen med utrustningen finns kvar i 2D-versionen. Fler frisyrer och rörelser är nästa steg.</p></div><details class="developer-details"><summary>För utvecklare</summary><p>Två GLB-modeller med separata masker för hår och kläder. Maskerna kombinerar geometri och originaltexturens färger.</p><label class="mask-toggle"><input type="checkbox" id="show-masks"> Visa färgmasker</label><div class="mask-key"><span><i class="hair-key"></i>Hår</span><span><i class="clothes-key"></i>Kläder</span><span><i class="unchanged-key"></i>Oförändrat</span></div><p id="model-stats"></p><p>Modellanpassade demomasker. Finjustera kanterna inför en slutversion. Modellerna saknar rigg och animationer.</p></details></aside>
+    </div>
+  </main>
+  <footer class="footer"><span>♡ En liten övning för en tryggare natt.</span><a href="./index.html#avatar">Tillbaka till din sovkompis</a><span class="local-note">3D-demo · ingen installation behövs</span></footer>
+</div>
+<script type="module" src="./demo-3d.js"></script>
+</body></html>

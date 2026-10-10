@@ -1,6 +1,6 @@
 # Sovkompis
 
-Svensk, responsiv prototyp för att bekanta sig med utrustning inför andningsregistrering. Körs i webbläsaren utan installation. Byggd med HTML, CSS, JavaScript-moduler och en utbytbar SVG-figur. Inget byggsteg eller npm-beroende behövs.
+Svensk, responsiv prototyp för att bekanta sig med utrustning inför andningsregistrering. Körs i webbläsaren utan installation. Byggd med HTML, CSS, JavaScript-moduler, en SVG-figur för övningen och en separat 3D-demo. Inget byggsteg eller npm-beroende behövs.
 
 ## Starta lokalt
 
@@ -16,7 +16,25 @@ Tester körs med `node --test tests/*.test.mjs`.
 4. Varje del ger 20 XP, avslutad omgång ger ytterligare 50 XP, totalt 210 XP. Tidigare intjänade poäng behålls. Tre kompletta omgångar låser upp stjärntröjan. Endast avslutade omgångar sparas.
 5. Figuren somnar med utrustningen på. Upprepa övningen när du vill.
 
-Uppläsning använder webbläsarens Web Speech API och tillgänglig svensk röst. Visuella instruktioner finns alltid. Alla bilder är egna SVG-element. Google Fonts hämtas externt; systemtypsnitt används som reserv. Framsteg lagras lokalt under `sovkompis-v1`, utan patientkonto eller serverlagring.
+Uppläsning använder webbläsarens Web Speech API och tillgänglig svensk röst. Visuella instruktioner finns alltid. 2D-figuren och utrustningen är SVG-element. 3D-demon använder de två tillhandahållna GLB-modellerna. Google Fonts hämtas externt; systemtypsnitt används som reserv. Framsteg lagras lokalt under `sovkompis-v1`, utan patientkonto eller serverlagring.
+
+## Separat 3D-demo
+
+Öppnas via **Din sovkompis → Öppna 3D-demon**, eller direkt på `demo-3d.html`. Både kort- och långhårig modell kan roteras och zoomas med mus, touch, knappar eller tangentbord. Hår och kläder har separata färgval, inklusive valfri färg och återställning av originaltexturen. Val sparas per modell under `sovkompis-demo3d-v1`; 2D-val och XP påverkas inte.
+
+`dist/demo-3d.js` använder [Three.js](https://threejs.org/) **0.180.0**, distribuerat lokalt i `dist/vendor/three` (MIT-licens i dess `LICENSE`). Inga CDN- eller modellserveranrop behövs. Bara vald modell laddas; den tidigare modellens GPU-resurser frigörs vid byte. Scenen renderas vid interaktion och förändringar, utan ständig animationsloop. WebGL 2 krävs, och ett felmeddelande visas om stödet eller modellhämtningen saknas.
+
+### Modeller och masker
+
+- `dist/models/boy.glb`: tillhandahållna ”3d cartoon boy figure.glb”, cirka 4,4 MiB.
+- `dist/models/girl.glb`: tillhandahållna ”cute girl 3d model.glb”, cirka 3,9 MiB.
+- Originalfilerna är oförändrade. Varje fil innehåller ett texturerat mesh med en gemensam materialyta, utan skelett eller animationsspår.
+- `*-mask.bin`: två little-endian float32-värden per originalvertex, i ordningen **hår, kläder**. Färgen ändras i en shader som bevarar texturens ljusvariationer och mönster. Ansikte, händer och exponerade anklar lämnas utanför.
+- `*-mask.json`: modellens SHA-256, vertexantal, synliga gränser och två trianglar från en lös exportyta som döljs i demovyn. Det tar också bort exportytans påverkan på figurens centrering.
+- Maskerna skapas med `python3 tools/generate_masks.py` (kräver NumPy och Pillow). Skriptet sammanfogar UV-sömmar för att hitta komponenter. Pojkens separata hår- och klädytor kan väljas geometriskt. Flickans hår sitter ihop med huvudytan, så dess mask använder även färgprov från originaltexturen. Komponentvalen är anpassade till just dessa exporter.
+- **För utvecklare → Visa färgmasker** visar hår i magenta, kläder i cyan och oförändrade ytor i grått. Maskerna är en modellberoende demoutgångspunkt och bör finjusteras inför slutversionen. Testerna stoppar publicering om modellfilen ändrats utan att motsvarande maskdata har uppdaterats.
+
+Utrustningsövningen, belöningar och sovanimationen finns fortsatt i **2D-versionen**. För en komplett 3D-övning behövs senare riggning, animationer, utbytbara frisyrer samt namngivna fästpunkter och interaktion för sensorerna.
 
 ## Ändra innehåll eller byt till 3D
 
