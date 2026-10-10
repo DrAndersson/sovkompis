@@ -282,7 +282,7 @@ function renderJourney() {
   const titles = { customize: ['Träffa din kompis i 3D.', 'Välj en figur, prova färger och vänd på din kompis.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'Din kompis vilar med alla delarna kvar.'] };
   $('#demo-title').textContent = titles[stage][0]; $('#demo-subtitle').textContent = titles[stage][1];
   $('.viewer-hint').textContent = stage === 'practice' ? 'Välj del · dra eller tryck på en plats' : stage === 'sleep' ? 'Sov gott, lilla kompis · dra för att se från sidan' : 'Dra för att snurra · nyp för att zooma';
-  $('#sleep-score').textContent = `${progress.rounds} övningar klara · ${progress.xp} XP samlade`;
+  $('#sleep-score').textContent = `${progress.rounds} ${progress.rounds === 1 ? 'övning klar' : 'övningar klara'} · ${progress.xp} XP samlade`;
   if (bedroom) bedroom.visible = stage === 'sleep';
   if (floor) floor.visible = stage !== 'sleep';
   updateInventory(); render();
@@ -375,7 +375,7 @@ function placePart(target) {
     try { if (storage?.getItem('sovkompis-v1')) progress = loadProgress(storage); } catch { /* Keep in-memory progress. */ }
     progress = completeRound(progress);
     const saved = saveProgress(storage, progress); syncColors();
-    $('#reward-message').textContent = progress.rounds >= 3 ? `${progress.rounds === 3 ? 'Du låste upp' : 'Du har låst upp'} stjärnpyjamasen! Den finns bland din kompis kläder.` : `${3 - progress.rounds} övningar kvar till din stjärnpyjamas.`;
+    $('#reward-message').textContent = progress.rounds >= 3 ? `${progress.rounds === 3 ? 'Du låste upp' : 'Du har låst upp'} stjärnpyjamasen! Den finns bland din kompis kläder.` : `${3 - progress.rounds} ${3 - progress.rounds === 1 ? 'övning' : 'övningar'} kvar till din stjärnpyjamas.`;
     if (!saved) $('#reward-message').textContent += ' Webbläsaren kan inte spara poängen mellan besök.';
     $('#celebration-3d').innerHTML = Array.from({ length: 32 }, (_, i) => `<i style="--left:${i * 37 % 100}%;--delay:${i % 5 * .13}s;--color:${['#dcb875', '#86b3a1', '#bda3cf', '#deaa9d'][i % 4]}"></i>`).join('');
     changeStage('complete'); announce(`Bravo! Alla åtta delar är på plats. Du har fått ${ROUND_XP} XP.`);
