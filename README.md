@@ -4,7 +4,7 @@ En lugn, lekfull webbprototyp för att öva inför en andningsregistrering.
 
 **[Öppna Sovkompis](https://drandersson.github.io/sovkompis/)**
 
-Skapa en egen figur, placera fem utrustningsdelar, samla XP och lås upp stjärntröjan efter tre övningar. Figuren avslutar genom att somna med utrustningen på.
+Skapa en egen figur, placera åtta utrustningsdelar (inklusive tre EKG-kablar), samla XP och lås upp stjärntröjan efter tre övningar. Figuren avslutar genom att somna med utrustningen på.
 
 Ingen installation eller patientinloggning behövs. Avataren är en tillfällig SVG-figur som kan bytas mot 3D-modeller. Appen anpassar sig till mobil, surfplatta och dator. Dragning, klick och tangentbord stöds. Framsteg sparas i webbläsaren.
 

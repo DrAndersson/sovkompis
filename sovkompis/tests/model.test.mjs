@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EQUIPMENT, DEFAULT_AVATAR, emptyProgress, sanitizeProgress, loadProgress, saveProgress, placeEquipment, completeRound, targetFor } from '../dist/model.js';
+import { EQUIPMENT, ECG_LEADS, ROUND_XP, DEFAULT_AVATAR, emptyProgress, sanitizeProgress, loadProgress, saveProgress, placeEquipment, completeRound, targetFor, availableTargets } from '../dist/model.js';
 
 test('A wrong target never gives credit, and an item cannot score twice', () => {
   const wrong = placeEquipment([], 'cannula', 'thorax');
@@ -12,21 +12,23 @@ test('A wrong target never gives credit, and an item cannot score twice', () => 
   assert.equal(duplicate.correct, false);
   assert.equal(placeEquipment([], 'unknown', 'unknown').correct, false);
 });
-test('All five distinct parts are needed, regardless of placement order', () => {
+test('All eight distinct parts are needed, regardless of placement order', () => {
+  assert.equal(EQUIPMENT.length, 8);
   let parts = [];
   for (const [i, e] of [...EQUIPMENT].reverse().entries()) {
     const result = placeEquipment(parts, e.id, e.id);
-    assert.equal(result.complete, i === 4);
+    assert.equal(result.complete, i === 7);
     parts = result.placed;
   }
 });
-test('Three completed rounds award 450 XP and unlock the outfit', () => {
+test('Three completed rounds award 630 XP and unlock the outfit', () => {
   let p = emptyProgress();
   p.avatar.outfit = 'stars';
   assert.equal(sanitizeProgress(p).avatar.outfit, DEFAULT_AVATAR.outfit);
   for (let i = 0; i < 3; i++) p = completeRound(p);
   assert.equal(p.rounds, 3);
-  assert.equal(p.xp, 450);
+  assert.equal(ROUND_XP, 210);
+  assert.equal(p.xp, 630);
   assert.equal(sanitizeProgress(p).avatar.outfit, 'stars');
 });
 test('Progress survives reload and malformed storage fails safely', () => {
@@ -34,6 +36,7 @@ test('Progress survives reload and malformed storage fails safely', () => {
   const storage = { getItem: () => raw, setItem: (_, val) => { raw = val; } };
   let p = completeRound(emptyProgress());
   p.avatar.name = 'Nova';
+  p.avatar.hair = 'long';
   p.oximeterSite = 'toe';
   assert.equal(saveProgress(storage, p), true);
   assert.deepEqual(loadProgress(storage), p);
@@ -41,6 +44,38 @@ test('Progress survives reload and malformed storage fails safely', () => {
   assert.deepEqual(loadProgress(null), emptyProgress());
   assert.equal(saveProgress(null, p), false);
   assert.deepEqual(sanitizeProgress({ rounds: -1, avatar: { skin: 'bad', eyes: 'bad', outfit: 'stars' } }), emptyProgress());
+});
+test('Earlier XP and unlocked clothes survive the move from five to eight parts', () => {
+  const legacy = { rounds: 3, xp: 450, avatar: { ...DEFAULT_AVATAR, outfit: 'stars' } };
+  const restored = sanitizeProgress(legacy);
+  assert.equal(restored.xp, 450);
+  assert.equal(restored.avatar.outfit, 'stars');
+  const completed = completeRound(restored);
+  assert.equal(completed.rounds, 4);
+  assert.equal(completed.xp, 660);
+  assert.equal(sanitizeProgress(completed).xp, 660);
+  assert.equal(sanitizeProgress({ rounds: 3 }).xp, 450);
+});
+test('The three ECG cables must each be placed correctly before completion', () => {
+  let parts = EQUIPMENT.filter(e => e.kind !== 'ecg').map(e => e.id);
+  assert.equal(parts.length, 5);
+  assert.equal(placeEquipment(parts, 'ecg-right', 'ecg-left').correct, false);
+  for (const [i, lead] of ECG_LEADS.entries()) {
+    assert.ok(availableTargets(parts, lead.id).some(target => target.id === lead.id));
+    const result = placeEquipment(parts, lead.id, lead.id);
+    assert.equal(result.complete, i === 2);
+    parts = result.placed;
+  }
+});
+test('Every selected part has a reachable target, with ECG sites on the patient’s sides', () => {
+  for (const item of EQUIPMENT) {
+    assert.ok(availableTargets([], item.id).some(target => target.id === item.id));
+  }
+  assert.ok(ECG_LEADS[0].target.x < 50);
+  assert.ok(ECG_LEADS[1].target.x > 50);
+  assert.ok(ECG_LEADS[2].target.x > 50);
+  assert.ok(ECG_LEADS[2].target.y > ECG_LEADS[1].target.y);
+  assert.equal(availableTargets([], 'ecg-right').length, 3);
 });
 test('Oximeter follows the selected finger/toe site without moving other sensors', () => {
   assert.deepEqual(targetFor(EQUIPMENT[3], 'toe'), { x: 59, y: 91 });
