@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import * as THREE from '../dist/vendor/three/build/three.module.min.js';
 import { createAvatarRig, BONE_NAMES, ANATOMY } from '../dist/rig-3d.js';
 import { createEquipment, attachmentFor } from '../dist/equipment-3d.js';
+import { createAppearance, prepareAppearance, HAIRSTYLES } from '../dist/appearance-3d.js';
 
 async function loadRig(name) {
   const raw = await readFile(new URL(`../dist/models/${name}.glb`, import.meta.url));
@@ -26,9 +27,32 @@ async function loadRig(name) {
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(attribute(primitive.attributes.NORMAL), 3));
   geometry.setAttribute('regionMask', new THREE.Float32BufferAttribute(Array.from({ length: mask.length / 4 }, (_, i) => mask.readFloatLE(i * 4)), 2));
   geometry.setIndex(attribute(primitive.indices).filter((_, i) => !metadata.excludedTriangles.includes(Math.floor(i / 3))));
+  prepareAppearance(geometry);
   return { rig: createAvatarRig(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()), name, metadata), source };
 }
 for (const name of ['boy', 'girl']) {
+  test(`${name}: hairstyles restore the original mesh and survive an equipment reset`, async () => {
+    const { rig } = await loadRig(name), appearance = createAppearance(rig, name), kit = createEquipment(rig);
+    const index = rig.mesh.geometry.index, original = Array.from(index.array);
+    for (const [style] of HAIRSTYLES) {
+      appearance.setStyle(style);
+      assert.equal(rig.mesh.geometry.index, index, 'changing hair should reuse its GPU index buffer');
+      if (style !== 'original') {
+        assert.ok(rig.mesh.geometry.drawRange.count < original.length);
+        assert.ok(appearance.hair.children.length > 0);
+      }
+      kit.place('oximeter'); kit.clear();
+      assert.equal(appearance.root.parent, rig.bones.head, 'restarting practice must preserve the hairstyle and eyelids');
+    }
+    appearance.setStyle('original');
+    assert.deepEqual(Array.from(index.array), original);
+    assert.equal(rig.mesh.geometry.drawRange.count, original.length);
+    assert.equal(appearance.hair.visible, false);
+    appearance.setSleep(1); assert.equal(appearance.lids.visible, true);
+    appearance.setSleep(0); assert.equal(appearance.lids.visible, false);
+    appearance.dispose(); appearance.root.traverse(o => o.geometry?.dispose());
+    rig.skeleton.dispose(); rig.mesh.geometry.dispose(); rig.mesh.material.dispose();
+  });
   test(`${name}: normalized 13-bone rig preserves the original mesh at rest`, async () => {
     const { rig, source } = await loadRig(name);
     assert.deepEqual(rig.skeleton.bones.map(b => b.name), BONE_NAMES);

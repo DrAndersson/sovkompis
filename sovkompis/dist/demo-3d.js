@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createAvatarRig } from './rig-3d.js';
-import { createEquipment, createBedroom } from './equipment-3d.js';
-import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js';
-import { equipmentSVG } from './avatar.js';
+import { createAvatarRig } from './rig-3d.js?v=20261010-cozy';
+import { createEquipment, createBedroom } from './equipment-3d.js?v=20261010-cozy';
+import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261010-cozy';
+import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261010-cozy';
+import { equipmentSVG } from './avatar.js?v=20261010-cozy';
 
 const $ = selector => document.querySelector(selector);
 const STORAGE_KEY = 'sovkompis-demo3d-v1';
@@ -13,7 +14,7 @@ const palettes = {
   hair: [['Brunt', '#594238'], ['Svart', '#292733'], ['Blont', '#d9b86b'], ['Koppar', '#af5936'], ['Rosa', '#d88cb1'], ['Lila', '#8d79b5']],
   clothes: [['Salvia', '#7fa99b'], ['Blått', '#6f9fd3'], ['Rosa', '#d99fab'], ['Lila', '#a58bc9'], ['Gult', '#e2bd67'], ['Korall', '#da8774']],
 };
-const state = { model: 'boy', boy: { hair: null, clothes: null }, girl: { hair: null, clothes: null } };
+const state = { model: 'boy', boy: { hair: null, clothes: null, hairstyle: 'original' }, girl: { hair: null, clothes: null, hairstyle: 'original' } };
 try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
   if (['boy', 'girl'].includes(saved?.model)) state.model = saved.model;
@@ -21,6 +22,7 @@ try {
     if (/^#[\da-f]{6}$/i.test(saved?.[model]?.[part])) state[model][part] = saved[model][part];
   }
   for (const model of ['boy', 'girl']) state[model].stars = saved?.[model]?.stars === true;
+  for (const model of ['boy', 'girl']) if (HAIRSTYLES.some(([id]) => id === saved?.[model]?.hairstyle)) state[model].hairstyle = saved[model].hairstyle;
 } catch { /* Storage is optional; the demo works without it. */ }
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -30,13 +32,15 @@ function save() {
 let storage;
 try { storage = localStorage; } catch { storage = null; }
 let progress = loadProgress(storage);
-let stage = 'customize', rig, equipment, skeletonHelper, bedroom, floor;
+let stage = 'customize', rig, equipment, appearance, skeletonHelper, bedroom, floor;
+let ambientLight, keyLight, fillLight;
 let placed = [], selected = null, counted = false, hinted = false, feedback = '', feedbackKind = '';
 let sleepStarted = 0, waveStarted = 0, lastAnimationFrame = 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const uniforms = {
   hairTint: { value: new THREE.Color() }, clothesTint: { value: new THREE.Color() },
   hairAmount: { value: 0 }, clothesAmount: { value: 0 }, maskPreview: { value: 0 }, starsAmount: { value: 0 },
+  sleepAmount: { value: 0 }, eyeCenter: { value: new THREE.Vector3() }, eyeSize: { value: new THREE.Vector2() }, lidColor: { value: new THREE.Color() },
 };
 let renderer, scene, camera, controls, currentModel, loadVersion = 0;
 const host = $('#three-container');
@@ -73,7 +77,19 @@ function syncColors() {
       button.textContent = active ? '✓' : '';
     });
   }
+  appearance?.setColor(state[state.model].hair, Boolean(uniforms.maskPreview.value));
   render();
+}
+function syncHairstyle() {
+  const style = state[state.model].hairstyle;
+  document.querySelectorAll('[data-hairstyle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.hairstyle === style)));
+  appearance?.setStyle(style); render();
+}
+for (const [id, label] of HAIRSTYLES) {
+  const button = document.createElement('button'); button.type = 'button'; button.dataset.hairstyle = id;
+  button.textContent = label; button.setAttribute('aria-pressed', 'false');
+  button.onclick = () => { state[state.model].hairstyle = id; syncHairstyle(); save(); };
+  $('#hairstyles-3d').append(button);
 }
 function setColor(part, color) { state[state.model][part] = color; syncColors(); save(); }
 for (const [part, palette] of Object.entries(palettes)) {
@@ -89,9 +105,9 @@ for (const [part, palette] of Object.entries(palettes)) {
   $(`#${part}-color`).addEventListener('input', event => setColor(part, event.target.value));
 }
 $('#reset-colors').addEventListener('click', () => {
-  state[state.model] = { hair: null, clothes: null, stars: false }; syncColors(); save();
+  Object.assign(state[state.model], { hair: null, clothes: null, stars: false }); syncColors(); save();
 });
-$('#show-masks').addEventListener('change', event => { uniforms.maskPreview.value = Number(event.target.checked); render(); });
+$('#show-masks').addEventListener('change', event => { uniforms.maskPreview.value = Number(event.target.checked); syncColors(); });
 
 // Offline masks use connected geometry and texture samples to separate hair,
 // clothing and skin. Tinting preserves the original texture luminance and motifs.
@@ -100,9 +116,10 @@ function maskedMaterial(original) {
   const material = new THREE.MeshStandardMaterial({ map: original.map, roughness: .88, metalness: 0 });
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = 'attribute vec2 regionMask; varying vec2 vRegionMask; varying vec3 vAvatarPosition;\n' + shader.vertexShader;
-    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegionMask = regionMask; vAvatarPosition = position;');
+    shader.vertexShader = 'attribute vec2 regionMask; attribute vec3 facePosition; varying vec2 vRegionMask; varying vec3 vAvatarPosition; varying vec3 vFacePosition;\n' + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegionMask = regionMask; vAvatarPosition = position; vFacePosition = facePosition;');
     shader.fragmentShader = `varying vec2 vRegionMask; varying vec3 vAvatarPosition;
+      varying vec3 vFacePosition; uniform float sleepAmount; uniform vec3 eyeCenter; uniform vec2 eyeSize; uniform vec3 lidColor;
       uniform float starsAmount;
       uniform vec3 hairTint; uniform vec3 clothesTint;
       uniform float hairAmount; uniform float clothesAmount; uniform float maskPreview;
@@ -121,12 +138,15 @@ function maskedMaterial(original) {
       float radius = .14 + .09 * cos(atan(cell.y, cell.x) * 5.0);
       float star = 1.0 - smoothstep(radius - .02, radius, length(cell));
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, .83, .38), star * clothes * starsAmount);
+      vec2 eyeDistance = (vec2(abs(vFacePosition.x), vFacePosition.y) - eyeCenter.xy) / eyeSize;
+      float lid = (1.0 - smoothstep(.88, 1.15, length(eyeDistance))) * step(eyeCenter.z - .037, vFacePosition.z);
+      diffuseColor.rgb = mix(diffuseColor.rgb, lidColor * (1.0 + .07 * eyeDistance.y), lid * sleepAmount);
       vec3 preview = mix(vec3(.32), vec3(.8, .1, .7), hair);
       preview = mix(preview, vec3(.05, .7, .75), clothes);
       diffuseColor.rgb = mix(diffuseColor.rgb, preview, maskPreview);
     `);
   };
-  material.customProgramCacheKey = () => 'sovkompis-region-mask-rig-v2';
+  material.customProgramCacheKey = () => 'sovkompis-region-mask-rig-v3-eyelids';
   return material;
 }
 function disposeModel(model) {
@@ -166,6 +186,7 @@ function showError(message, retry = false) {
 async function loadModel(name) {
   const version = ++loadVersion;
   state.model = name; save(); syncColors();
+  document.querySelectorAll('[data-hairstyle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.hairstyle === state[name].hairstyle)));
   document.querySelectorAll('[data-model]').forEach(button => {
     const active = button.dataset.model === name;
     button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
@@ -202,12 +223,16 @@ async function loadModel(name) {
     mesh.geometry.boundingBox = new THREE.Box3(new THREE.Vector3().fromArray(metadata.visibleBounds.min), new THREE.Vector3().fromArray(metadata.visibleBounds.max));
     mesh.geometry.boundingSphere = mesh.geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
     mesh.geometry.setAttribute('regionMask', new THREE.BufferAttribute(mask, 2));
+    prepareAppearance(mesh.geometry);
     const old = mesh.material; mesh.material = maskedMaterial(old); old.dispose();
     mesh.castShadow = true; mesh.receiveShadow = true;
     const nextRig = createAvatarRig(mesh, name, metadata);
     if (skeletonHelper) { scene.remove(skeletonHelper); skeletonHelper.dispose(); }
-    scene.remove(currentModel); disposeModel(currentModel);
+    scene.remove(currentModel); disposeModel(currentModel); appearance?.dispose();
     rig = nextRig; currentModel = rig.group; scene.add(currentModel);
+    appearance = createAppearance(rig, name);
+    uniforms.eyeCenter.value.fromArray(APPEARANCE[name].eye); uniforms.eyeSize.value.fromArray(APPEARANCE[name].eyeSize); uniforms.lidColor.value.set(APPEARANCE[name].skin);
+    syncHairstyle(); syncColors();
     equipment = createEquipment(rig);
     skeletonHelper = new THREE.SkeletonHelper(rig.mesh);
     skeletonHelper.material.depthTest = false; skeletonHelper.renderOrder = 10;
@@ -225,7 +250,7 @@ async function loadModel(name) {
 function resetView() {
   if (!controls) return;
   if (stage === 'sleep') {
-    controls.target.set(0, .72, -.18); camera.position.set(2.7, 3.3, 3.3);
+    controls.target.set(0, .72, -.18); camera.position.set(2.5, 4.0, 3.3);
   } else { controls.target.set(0, 1, 0); camera.position.set(0, 1.12, 4.4); }
   controls.update(); render();
 }
@@ -264,6 +289,13 @@ function updateAnimation(now) {
   rig.group.rotation.set(-Math.PI / 2 * eased, 0, 0);
   rig.group.position.set(0, .83 * eased, .84 * eased);
   rig.pose({ sleep: eased, breath: sleeping && !reducedMotion.matches ? Math.sin(now / 1100) : 0, greet });
+  const eyesClosed = THREE.MathUtils.smoothstep(eased, .35, .75);
+  uniforms.sleepAmount.value = eyesClosed; appearance?.setSleep(eyesClosed);
+  ambientLight.intensity = THREE.MathUtils.lerp(2.2, .72, eased);
+  keyLight.intensity = THREE.MathUtils.lerp(2.6, .95, eased);
+  fillLight.intensity = THREE.MathUtils.lerp(1.5, .45, eased);
+  bedroom.getObjectByName('duvet').visible = eased > .86;
+  host.dataset.eyes = eyesClosed > .99 ? 'closed' : 'open';
   host.dataset.pose = sleeping ? t < 1 ? 'settling' : 'sleep' : 'standing';
 }
 function renderJourney() {
@@ -279,7 +311,7 @@ function renderJourney() {
   $('#celebration-3d').hidden = stage !== 'complete';
   $('#greet-3d').disabled = stage !== 'customize';
   $('#demo-xp').textContent = `${progress.xp + (stage === 'practice' && !counted ? placed.length * XP_PER_PART : 0)} XP`;
-  const titles = { customize: ['Träffa din kompis i 3D.', 'Välj en figur, prova färger och vänd på din kompis.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'Din kompis vilar med alla delarna kvar.'] };
+  const titles = { customize: ['Träffa din kompis i 3D.', 'Välj figur, frisyr och favoritfärger. Du bestämmer.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'En mjuk kudde, en varm filt och en kompis som somnar.'] };
   $('#demo-title').textContent = titles[stage][0]; $('#demo-subtitle').textContent = titles[stage][1];
   $('.viewer-hint').textContent = stage === 'practice' ? 'Välj del · dra eller tryck på en plats' : stage === 'sleep' ? 'Sov gott, lilla kompis · dra för att se från sidan' : 'Dra för att snurra · nyp för att zooma';
   $('#sleep-score').textContent = `${progress.rounds} ${progress.rounds === 1 ? 'övning klar' : 'övningar klara'} · ${progress.xp} XP samlade`;
@@ -452,12 +484,12 @@ try {
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.setAttribute('aria-hidden', 'true'); host.append(renderer.domElement);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xa3b797, 2.2));
-  const key = new THREE.DirectionalLight(0xfff4e5, 2.6); key.position.set(3, 5, 4);
+  ambientLight = new THREE.HemisphereLight(0xffffff, 0xa3b797, 2.2); scene.add(ambientLight);
+  const key = keyLight = new THREE.DirectionalLight(0xfff4e5, 2.6); key.position.set(3, 5, 4);
   key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.left = -2; key.shadow.camera.right = 2; key.shadow.camera.top = 3; key.shadow.camera.bottom = -2;
   key.shadow.normalBias = .02; key.shadow.bias = -.0002; scene.add(key);
-  const fill = new THREE.DirectionalLight(0xe6f1ff, 1.5); fill.position.set(-3, 2, -3); scene.add(fill);
+  const fill = fillLight = new THREE.DirectionalLight(0xe6f1ff, 1.5); fill.position.set(-3, 2, -3); scene.add(fill);
   floor = new THREE.Mesh(new THREE.CircleGeometry(1.05, 64), new THREE.ShadowMaterial({ opacity: .13 }));
   floor.rotation.x = -Math.PI / 2; floor.position.y = -.012; floor.receiveShadow = true; scene.add(floor);
   bedroom = createBedroom(); scene.add(bedroom);

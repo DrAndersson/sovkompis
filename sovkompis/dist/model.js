@@ -12,7 +12,7 @@ export const EQUIPMENT = [
   { id: 'thorax', name: 'Bröstband', subtitle: 'Thoraxband', short: 'Bröstkorg', color: '#718cae', description: 'Bandet följer bröstkorgens rörelser när du andas.', instruction: 'Dra bröstbandet runt bröstkorgen, ovanför magen.', success: 'Precis! Det här bandet följer bröstkorgens rörelser.', target: { x: 50, y: 52 } },
   { id: 'abdomen', name: 'Magband', short: 'Mage', color: '#a18bb3', description: 'Det här bandet följer magens rörelser när du andas.', instruction: 'Dra magbandet till magen, under bröstbandet.', success: 'Där satt det! Magbandet får följa med när magen rör sig.', target: { x: 50, y: 65 } },
   { id: 'oximeter', name: 'Pulsoximeter', short: 'Finger', color: '#cb9974', description: 'En liten sensor mäter syresättningen i blodet och din puls.', instruction: 'Dra pulsoximetern till den markerade handen eller foten.', success: 'Bra jobbat! Nu är pulsoximetern på plats.', target: { x: 25, y: 65 } },
-  { id: 'sentec', name: 'Sentec-sensor', short: 'Övre bröstkorg', color: '#9caa72', description: 'Sensorn sitter mot huden och mäter koldioxid genom huden. En sladd går till monitorn.', instruction: 'Dra Sentec-sensorn till övre delen av bröstkorgen. Personalen visar den exakta platsen på dig.', success: 'Toppen! Sentec-sensorn och sladden är på plats.', target: { x: 50, y: 45 } },
+  { id: 'sentec', name: 'Koldioxidmätare', short: 'Övre bröstkorg', color: '#9caa72', description: 'Sensorn sitter mot huden och mäter koldioxid genom huden. En sladd går till monitorn.', instruction: 'Dra koldioxidmätaren till övre delen av bröstkorgen. Personalen visar den exakta platsen på dig.', success: 'Toppen! Koldioxidmätaren och sladden är på plats.', target: { x: 50, y: 45 } },
   ...ECG_LEADS.map(lead => ({ ...lead, kind: 'ecg', name: `EKG-kabel ${lead.number}`, subtitle: lead.short, color: '#719ca4', description: 'Tre små klisterlappar med kablar hjälper till att registrera hjärtats slag. De sitter mot huden.', instruction: `Sätt kabel ${lead.number} på ${lead.location} av bröstkorgen, räknat från din sovkompis håll. Personalen visar exakt var på dig.`, success: `Fint! EKG-kabel ${lead.number} sitter på ${lead.location} av bröstkorgen.` })),
 ];
 export const ROUND_XP = EQUIPMENT.length * XP_PER_PART + COMPLETION_BONUS;
@@ -33,7 +33,7 @@ export function sanitizeProgress(value) {
   clean.avatar.name = typeof a.name === 'string' && a.name.trim() ? a.name.trim().slice(0, 24) : DEFAULT_AVATAR.name;
   if (SKIN_COLORS.includes(a.skin)) clean.avatar.skin = a.skin;
   if (HAIR_COLORS.includes(a.hairColor)) clean.avatar.hairColor = a.hairColor;
-  if (['wave', 'short', 'buns', 'long', 'none'].includes(a.hair)) clean.avatar.hair = a.hair;
+  if (['wave', 'short', 'buns', 'long', 'bob', 'ponytail', 'none'].includes(a.hair)) clean.avatar.hair = a.hair;
   if (['round', 'happy', 'anime'].includes(a.eyes)) clean.avatar.eyes = a.eyes;
   if (OUTFIT_COLORS.includes(a.outfit) || (a.outfit === 'stars' && clean.rounds >= 3)) clean.avatar.outfit = a.outfit;
   return clean;

@@ -33,3 +33,11 @@
 .builder-preview{justify-content:center}.builder-preview .avatar-halo{top:50%;transform:translate(-50%,-58%)}
 
 .demo-entry{display:flex;justify-content:space-between;align-items:center;gap:18px;border:1px solid #dce4d2;background:#eef2e5;border-radius:14px;padding:16px 20px;margin-bottom:22px}.demo-entry strong{font-size:14px}.demo-entry p{font-size:12px;color:#78896c;margin:6px 0 0;line-height:1.7}.demo-entry a{font-size:12px;white-space:nowrap;color:#3c6545;font-weight:600;text-decoration:none;padding:10px 0}.demo-entry small{display:inline-block;font-size:8px;letter-spacing:1px;padding:4px 6px;margin-left:7px;border-radius:5px;background:#dce5ce;color:#748866;vertical-align:middle}@media(max-width:650px){.demo-entry{padding:14px;gap:10px;flex-wrap:wrap}.demo-entry strong{font-size:13px}.demo-entry p{font-size:11px}.demo-entry a{padding:4px 0}}
+
+/* A tucked-in, softly lit bedtime scene. */
+.bedroom{background:radial-gradient(ellipse at 15% 60%,#79705c,#444d5b 60%,#30394c);box-shadow:inset 0 0 65px #24293944}.bed-pillow{background:#fff0d4;box-shadow:0 5px 0 #c5b79f,0 0 24px #edd3a11a;border:2px solid #e8dbc1}.bed-blanket{position:absolute;left:40%;right:7%;bottom:135px;height:86px;border-radius:38% 24px 18px 15px;background:repeating-linear-gradient(95deg,transparent 0 34px,#ffffff08 35px 37px),linear-gradient(165deg,#a5b8ac,#718e89);transform:rotate(-4deg);box-shadow:inset 10px 8px 0 #c6cdb1,0 6px 12px #152b3433;display:flex;align-items:center;justify-content:space-around;color:#efe0b5}.bed-blanket span:nth-child(2){align-self:flex-end;margin-bottom:15px}.night-lamp{position:absolute;width:35px;height:35px;border-radius:50% 50% 12% 12%;background:#ecd5a3;bottom:180px;left:3%;box-shadow:0 0 48px 24px #f9ce7c33}.night-lamp:after{content:"";position:absolute;height:28px;width:4px;background:#b4956d;left:16px;top:35px}.bedroom .zzz,.bedroom-caption,.bedroom .night-spark{color:#e8ddc6}.hairstyles{grid-template-columns:repeat(4,1fr)}
+@media(max-width:650px){.bed-blanket{bottom:116px;height:73px;left:42%}.night-lamp{bottom:164px;left:4%;width:28px;height:29px}.night-lamp:after{left:12px;top:29px}.hairstyles{grid-template-columns:repeat(4,1fr)}}
+
+.sleeping-avatar{left:35%;bottom:8px;filter:brightness(.91)}
+@media(max-width:1100px){.sleeping-avatar{left:39%;bottom:20px}}
+@media(max-width:650px){.sleeping-avatar{left:43%;bottom:27px}}

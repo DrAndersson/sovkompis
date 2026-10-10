@@ -98,7 +98,7 @@ export function createEquipment(rig) {
     if (id === 'sentec') {
       rig.attach(disc(.022, '#96ad72'), 'spine', pos);
       const sentecBox = [recorder[0] + .085, recorder[1] - .085, recorder[2]];
-      recorderBox(sentecBox, '#8fa76b', 'Sentec-monitor'); leadToRecorder(pos, '#a8bc83', 'spine', .06, sentecBox); return;
+      recorderBox(sentecBox, '#8fa76b', 'Koldioxidmätare'); leadToRecorder(pos, '#a8bc83', 'spine', .06, sentecBox); return;
     }
     const number = { 'ecg-right': 1, 'ecg-left': 2, 'ecg-lower': 3 }[id];
     const color = ['#bd9c55', '#6da7ae', '#b08baa'][number - 1];
@@ -110,12 +110,56 @@ export function createEquipment(rig) {
 
 export function createBedroom() {
   const group = new THREE.Group(); group.name = 'bedroom';
-  const mattress = box([1.45, .19, 2.65], '#ecdfc5'); mattress.position.set(0, .53, -.15); mattress.receiveShadow = true; group.add(mattress);
-  const base = box([1.5, .14, 2.73], '#9bb2a0'); base.position.set(0, .375, -.15); group.add(base);
-  const headboard = box([1.5, .75, .12], '#9bb2a0'); headboard.position.set(0, .7, -1.56); group.add(headboard);
-  const pillow = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), material('#fff7e4')); pillow.scale.set(.56, .15, .36); pillow.position.set(0, .73, -1.11); pillow.receiveShadow = true; group.add(pillow);
+  function softBox(size, radius, color, position) {
+    const geometry = new THREE.BoxGeometry(...size, 8, 8, 8), p = geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const v = new THREE.Vector3().fromBufferAttribute(p, i), inner = v.clone();
+      for (let axis = 0; axis < 3; axis++) inner.setComponent(axis, THREE.MathUtils.clamp(v.getComponent(axis), -size[axis] / 2 + radius, size[axis] / 2 - radius));
+      v.sub(inner).normalize().multiplyScalar(radius).add(inner); p.setXYZ(i, v.x, v.y, v.z);
+    }
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, material(color)); mesh.position.set(...position); group.add(mesh); return mesh;
+  }
+  softBox([1.49, .22, 2.69], .09, '#e7d6b9', [0, .53, -.15]);
+  softBox([1.54, .15, 2.76], .05, '#aa8d79', [0, .36, -.15]);
+  softBox([1.58, .88, .16], .075, '#8a9d94', [0, .74, -1.58]);
+  softBox([1.35, .48, .09], .04, '#a5b3a5', [0, .93, -1.47]);
+  const pillow = softBox([1.22, .21, .65], .095, '#fff1d4', [0, .73, -1.04]); pillow.name = 'pillow';
+  const pillowSeam = new THREE.Mesh(tube(Array.from({ length: 65 }, (_, i) => { const a = i / 64 * Math.PI * 2; return new THREE.Vector3(.58 * Math.cos(a), .745, -1.04 + .29 * Math.sin(a)); }), .004, true), material('#d9c5a8')); group.add(pillowSeam);
   for (const x of [-.61, .61]) for (const z of [-1.23, .96]) { const leg = box([.095, .33, .095], '#758e7b'); leg.position.set(x, .16, z); group.add(leg); }
-  const blanket = box([1.39, .06, .27], '#adc6ba'); blanket.position.set(0, .66, 1.02); group.add(blanket);
-  group.traverse(object => { if (object.isMesh) object.castShadow = true; });
+  const duvet = new THREE.Group(); duvet.name = 'duvet'; group.add(duvet);
+  // A curved cloth surface drapes over the legs and hangs over the mattress.
+  // Its top stops below the upper chest so the cannula and electrodes remain visible.
+  const clothPoint = (u, v) => {
+    const x = (u - .5) * 1.7, z = -.02 + v * 1.28 + .07 * (1 - (2 * u - 1) ** 2);
+    const body = Math.sqrt(Math.max(0, 1 - (Math.abs(x) / .86) ** 4));
+    const folds = .014 * Math.sin(u * 35 + v * 5) * Math.sin(v * Math.PI);
+    const drop = .30 * THREE.MathUtils.smoothstep(v, .85, 1);
+    return new THREE.Vector3(x, .57 + .64 * body - drop + folds, z);
+  };
+  const vertices = [], indices = [], segments = 40;
+  for (let row = 0; row <= segments; row++) for (let col = 0; col <= segments; col++) {
+    vertices.push(...clothPoint(col / segments, row / segments).toArray());
+    if (row < segments && col < segments) { const a = row * (segments + 1) + col, b = a + segments + 1; indices.push(a, b, a + 1, a + 1, b, b + 1); }
+  }
+  const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3)); geometry.setIndex(indices); geometry.computeVertexNormals();
+  const cloth = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: '#849f9c', roughness: 1, side: THREE.DoubleSide })); cloth.name = 'blanket'; duvet.add(cloth);
+  for (const v of [0, .09]) {
+    const edge = new THREE.Mesh(tube(Array.from({ length: 41 }, (_, i) => clothPoint(i / 40, v).add(new THREE.Vector3(0, .008, 0))), v === 0 ? .027 : .006), material(v === 0 ? '#bac6b1' : '#a9bba8')); duvet.add(edge);
+  }
+  // Small stitched stars sit on the cloth instead of using a remote texture.
+  for (const [u, v] of [[.25, .28], [.62, .35], [.43, .63], [.76, .71], [.21, .79]]) {
+    const star = new THREE.Shape();
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2, r = i % 2 ? .015 : .039; i ? star.lineTo(Math.sin(a) * r, Math.cos(a) * r) : star.moveTo(0, r); }
+    star.closePath();
+    const patch = new THREE.Mesh(new THREE.ShapeGeometry(star), new THREE.MeshStandardMaterial({ color: '#ded2a8', roughness: 1, side: THREE.DoubleSide })); patch.rotation.x = -Math.PI / 2; patch.position.copy(clothPoint(u, v)).y += .012; duvet.add(patch);
+  }
+  // A compact bedside lamp supplies an actual warm light as the room dims.
+  softBox([.45, .08, .48], .03, '#ad8b72', [-1.04, .59, -.89]);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.017, .017, .25, 12), material('#bd9c67')); stem.position.set(-1.04, .755, -.89); group.add(stem);
+  const shade = new THREE.Mesh(new THREE.CylinderGeometry(.12, .195, .23, 32), new THREE.MeshStandardMaterial({ color: '#f7dfb0', emissive: '#eaa959', emissiveIntensity: .45, roughness: 1 })); shade.position.set(-1.04, .98, -.89); group.add(shade);
+  const lamp = new THREE.PointLight('#ffd19a', 2.3, 4, 2); lamp.position.set(-1.04, 1.12, -.82); group.add(lamp);
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(1, 64), material('#6e6b73')); rug.rotation.x = -Math.PI / 2; rug.scale.set(1.32, 1.84, 1); rug.position.set(0, -.01, -.1); group.add(rug);
+  group.traverse(object => { if (object.isMesh) { object.castShadow = true; object.receiveShadow = true; } });
   group.visible = false; return group;
 }

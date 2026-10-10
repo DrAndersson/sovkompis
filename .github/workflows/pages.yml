@@ -32,6 +32,7 @@ jobs:
           node --check dist/avatar.js
           node --check dist/demo-3d.js
           node --check dist/rig-3d.js
+          node --check dist/appearance-3d.js
           node --check dist/equipment-3d.js
           node --test tests/*.test.mjs
       - uses: actions/configure-pages@v5

@@ -1,4 +1,4 @@
-import { ECG_LEADS } from './model.js';
+import { ECG_LEADS } from './model.js?v=20261010-cozy';
 // Replace this renderer with a GLB/Three.js avatar later. Locations use a shared 0–100 coordinate space.
 export function avatarSVG(avatar, { id = 'avatar', placed = [], sleeping = false, site = 'finger' } = {}) {
   const p = key => `${id}-${key}`;
@@ -7,10 +7,12 @@ export function avatarSVG(avatar, { id = 'avatar', placed = [], sleeping = false
   const has = key => placed.includes(key);
   let hairSVG = '';
   const longHairBack = avatar.hair === 'long' ? `<g data-hair="long"><path d="M106 111C98 32 259 20 260 111L269 213Q261 244 229 232L222 165H140L133 232Q102 245 93 216Z" fill="${grad('hair')}"/><path d="M112 137Q103 197 112 223M251 135Q261 197 250 223" stroke="#fff" opacity=".12" fill="none" stroke-width="5" stroke-linecap="round"/></g>` : '';
+  const extraHairBack = avatar.hair === 'bob' ? `<path d="M104 115C97 20 266 24 260 118L266 178Q246 199 228 175L136 174Q112 191 97 175Z" fill="${grad('hair')}"/>` : avatar.hair === 'ponytail' ? `<path d="M247 72Q294 59 292 106C280 155 297 171 311 195Q258 202 256 154L253 102Z" fill="${grad('hair')}"/><path d="M253 84L271 93" stroke="#b99bce" stroke-width="12" stroke-linecap="round"/>` : '';
   if (avatar.hair === 'wave') hairSVG = `<path d="M115 123C103 111 103 89 112 76C111 52 133 44 149 47C163 25 191 30 204 44C229 33 252 50 249 66C273 76 274 108 255 124L244 110L242 82C225 91 210 86 198 75C179 94 147 86 125 96L123 123Z" fill="${grad('hair')}"/><path d="M130 76Q150 54 175 63M187 52Q204 48 221 60" fill="none" stroke="#fff" opacity=".12" stroke-width="8" stroke-linecap="round"/>`;
   if (avatar.hair === 'short') hairSVG = `<path d="M111 121V90C111 36 253 31 254 90L249 123L236 102L234 80Q204 84 190 71Q162 92 127 90L127 120Z" fill="${grad('hair')}"/>`;
   if (avatar.hair === 'buns') hairSVG = `<circle cx="112" cy="76" r="29" fill="${grad('hair')}"/><circle cx="251" cy="76" r="29" fill="${grad('hair')}"/><path d="M111 126V93C111 29 252 26 254 93V125L239 102L236 79Q206 91 184 65Q163 92 127 88L126 120Z" fill="${grad('hair')}"/>`;
   if (avatar.hair === 'long') hairSVG = `<path d="M109 128L109 96C111 34 250 29 254 94L253 141Q256 179 242 190L237 104Q205 99 187 69Q170 100 128 106L125 168Q121 183 115 188L108 164Z" fill="${grad('hair')}"/><path d="M130 82Q147 62 170 60M208 59Q232 66 240 83" stroke="#fff" opacity=".13" fill="none" stroke-width="6" stroke-linecap="round"/>`;
+  if (avatar.hair === 'bob' || avatar.hair === 'ponytail') hairSVG = `<path d="M110 128L110 92C112 32 253 32 255 93L253 127L241 108L234 84Q204 103 184 73Q161 97 127 94L124 124Z" fill="${grad('hair')}"/><path d="M130 76Q153 53 179 59" stroke="#fff" opacity=".14" fill="none" stroke-width="6" stroke-linecap="round"/>`;
   let eyes = `<ellipse cx="157" cy="131" rx="5.7" ry="8" fill="#343231"/><ellipse cx="206" cy="131" rx="5.7" ry="8" fill="#343231"/><circle cx="159" cy="128" r="1.7" fill="white"/><circle cx="208" cy="128" r="1.7" fill="white"/>`;
   if (avatar.eyes === 'happy' || sleeping) eyes = `<path d="M148 134Q157 ${sleeping ? 142 : 120} 166 134M198 134Q207 ${sleeping ? 142 : 120} 216 134" fill="none" stroke="#493b35" stroke-width="4" stroke-linecap="round"/>`;
   if (avatar.eyes === 'anime' && !sleeping) eyes = `<ellipse cx="157" cy="133" rx="8" ry="11" fill="#414e4a"/><ellipse cx="207" cy="133" rx="8" ry="11" fill="#414e4a"/><ellipse cx="159" cy="128" rx="3" ry="4" fill="white"/><ellipse cx="209" cy="128" rx="3" ry="4" fill="white"/><path d="M148 123L163 121M199 121L215 123" stroke="#493b35" stroke-width="3" stroke-linecap="round"/>`;
@@ -24,7 +26,7 @@ export function avatarSVG(avatar, { id = 'avatar', placed = [], sleeping = false
     <pattern id="${p('stars')}" width="31" height="33" patternUnits="userSpaceOnUse"><path d="m15 7 2 6 6 1-5 4 1 6-5-3-5 3 1-6-5-4 6-1Z" fill="#f5e8b8" opacity=".85"/></pattern>
   </defs>
   <ellipse cx="180" cy="437" rx="86" ry="11" fill="#365c50" opacity=".14" filter="${grad('shadow')}"/>
-  ${longHairBack}
+  ${longHairBack}${extraHairBack}
   <path d="M126 307L132 400Q145 414 168 400L179 329L193 400Q213 414 232 400L238 306Z" fill="${grad('pants')}"/>
   <path d="M133 394Q111 401 119 419Q141 432 171 421L169 398Z" fill="#f9f6ec"/><path d="M192 398L190 420Q226 433 244 417Q248 401 230 394Z" fill="#f9f6ec"/>
   <path d="M120 417Q145 427 170 418M192 418Q220 427 243 416" fill="none" stroke="#d9d5c7" stroke-width="4"/>
