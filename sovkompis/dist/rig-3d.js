@@ -6,7 +6,7 @@ export const ANATOMY = {
   boy: {
     hips: [0, .37, .02], spine: [0, .54, .02], head: [0, .65, .025],
     shoulder: [.105, .60, .015], elbow: [.193, .49, .025], hand: [.267, .395, .04],
-    leg: [.08, .365, .02], foot: [.12, .075, .055], headStart: .66,
+    leg: [.08, .365, .02], knee: [.10, .21, .025], foot: [.12, .075, .055], headStart: .66,
     nose: [0, .714, .134], ear: [.123, .746, .035],
     thorax: { y: .551, x: .119, z: .02, depth: .086 },
     abdomen: { y: .442, x: .14, z: .027, depth: .091 },
@@ -16,7 +16,7 @@ export const ANATOMY = {
   girl: {
     hips: [0, .354, .29], spine: [0, .493, .29], head: [0, .604, .30],
     shoulder: [.093, .565, .29], elbow: [.165, .455, .30], hand: [.221, .371, .313],
-    leg: [.075, .351, .29], foot: [.107, .078, .31], headStart: .615,
+    leg: [.075, .351, .29], knee: [.093, .205, .297], foot: [.107, .078, .31], headStart: .615,
     nose: [0, .648, .404], ear: [.117, .691, .325],
     thorax: { y: .527, x: .107, z: .297, depth: .075 },
     abdomen: { y: .433, x: .13, z: .300, depth: .092 },
@@ -24,7 +24,7 @@ export const ANATOMY = {
     finger: [-.247, .343, .345], toe: [.113, .036, .412], recorder: [.174, .316, .379],
   },
 };
-export const BONE_NAMES = ['hips', 'spine', 'head', 'upperArmR', 'forearmR', 'handR', 'upperArmL', 'forearmL', 'handL', 'legR', 'footR', 'legL', 'footL'];
+export const BONE_NAMES = ['hips', 'spine', 'head', 'upperArmR', 'forearmR', 'handR', 'upperArmL', 'forearmL', 'handL', 'legR', 'kneeR', 'footR', 'legL', 'kneeL', 'footL'];
 const smooth = (a, b, value) => THREE.MathUtils.smoothstep(value, a, b);
 
 export function vertexWeights(name, point, hair = 0) {
@@ -41,8 +41,9 @@ export function vertexWeights(name, point, hair = 0) {
   }
   if (y < p.hips[1]) {
     const leg = 1 - smooth(p.hips[1] - .065, p.hips[1], y);
+    const knee = 1 - smooth(p.knee[1] - .035, p.knee[1] + .035, y);
     const foot = 1 - smooth(p.foot[1] + .015, p.foot[1] + .075, y);
-    return [['hips', 1 - leg], [`leg${side}`, leg * (1 - foot)], [`foot${side}`, leg * foot]];
+    return [['hips', 1 - leg], [`leg${side}`, leg * (1 - knee)], [`knee${side}`, leg * knee * (1 - foot)], [`foot${side}`, leg * knee * foot]];
   }
   const spine = smooth(p.hips[1], p.hips[1] + .11, y);
   return [['hips', 1 - spine], ['spine', spine]];
@@ -100,7 +101,7 @@ export function createAvatarRig(sourceMesh, name, metadata) {
   }
   for (const [side, sign] of [['R', -1], ['L', 1]]) {
     const mirrored = value => [sign * value[0], value[1], value[2]];
-    definitions.push([`leg${side}`, 'hips', mirrored(profile.leg)], [`foot${side}`, `leg${side}`, mirrored(profile.foot)]);
+    definitions.push([`leg${side}`, 'hips', mirrored(profile.leg)], [`knee${side}`, `leg${side}`, mirrored(profile.knee)], [`foot${side}`, `knee${side}`, mirrored(profile.foot)]);
   }
   const mesh = new THREE.SkinnedMesh(geometry, sourceMesh.material); mesh.name = `${name}-body`;
   mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;
@@ -133,20 +134,29 @@ export function createAvatarRig(sourceMesh, name, metadata) {
     const item = new THREE.SkinnedMesh(geo, material); item.frustumCulled = false;
     attachments.add(item); group.updateMatrixWorld(true); item.bind(skeleton, mesh.bindMatrix); objects.push(item); return item;
   }
-  function pose({ sleep = 0, breath = 0, greet = 0 } = {}) {
+  function pose({ sleep = 0, breath = 0, greet = 0, lookPitch = 0, lookYaw = 0, giggle = 0, legR = 0, legL = 0, kneeR = 0, kneeL = 0, curl = 0, support = 0, tuck = 0 } = {}) {
     for (const bone of boneList) { bone.rotation.set(0, 0, 0); bone.position.copy(restLocal[bone.name]); }
-    bones.spine.rotation.x = breath * .006;
-    bones.head.rotation.z = sleep * .06;
-    // Lift the large cartoon head gently onto its pillow without changing its expression.
+    bones.spine.rotation.x = breath * .006 + curl + giggle * .024;
+    bones.spine.rotation.z = giggle * .015;
+    bones.spine.position.y += Math.abs(giggle) * .007;
+    bones.head.rotation.z = sleep * .06 + giggle * .035;
+    // Head movement carries hair, eyelids and the cannula with it.
     bones.head.position.z += sleep * .06;
-    bones.head.rotation.x = sleep * .1;
-    bones.upperArmR.rotation.z = sleep * .23;
-    bones.upperArmL.rotation.z = -sleep * .23;
+    bones.head.rotation.x = sleep * .1 + lookPitch + curl * .35;
+    bones.head.rotation.y = lookYaw;
+    bones.upperArmR.rotation.z = sleep * .23 + support * .36 + Math.abs(giggle) * .055;
+    bones.upperArmL.rotation.z = -sleep * .23 - support * .30 - Math.abs(giggle) * .055;
+    bones.upperArmR.rotation.x = support * .30 - tuck * .50;
+    bones.upperArmL.rotation.x = support * .25 - tuck * .44;
     bones.forearmR.rotation.y = -sleep * .10;
     bones.forearmL.rotation.y = sleep * .10;
+    bones.forearmR.rotation.x = -tuck * .40;
+    bones.forearmL.rotation.x = -tuck * .36;
     bones.upperArmL.rotation.z += greet * .8;
     bones.forearmL.rotation.z += greet * 1.05;
     bones.handL.rotation.y += greet * .3;
+    bones.legR.rotation.x = legR; bones.legL.rotation.x = legL;
+    bones.kneeR.rotation.x = kneeR; bones.kneeL.rotation.x = kneeL;
     group.updateMatrixWorld(true); skeleton.update();
   }
   function clearEquipment() {

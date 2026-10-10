@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import * as THREE from '../dist/vendor/three/build/three.module.min.js';
 import { createAvatarRig, BONE_NAMES, ANATOMY } from '../dist/rig-3d.js';
 import { createEquipment, attachmentFor } from '../dist/equipment-3d.js';
+import { bedtimeFrame, gazeFor } from '../dist/motion-3d.js';
 import { createAppearance, prepareAppearance, HAIRSTYLES } from '../dist/appearance-3d.js';
 
 async function loadRig(name) {
@@ -53,14 +54,14 @@ for (const name of ['boy', 'girl']) {
     appearance.dispose(); appearance.root.traverse(o => o.geometry?.dispose());
     rig.skeleton.dispose(); rig.mesh.geometry.dispose(); rig.mesh.material.dispose();
   });
-  test(`${name}: normalized 13-bone rig preserves the original mesh at rest`, async () => {
+  test(`${name}: normalized 15-bone rig preserves the original mesh at rest`, async () => {
     const { rig, source } = await loadRig(name);
     assert.deepEqual(rig.skeleton.bones.map(b => b.name), BONE_NAMES);
     rig.pose();
     const pos = rig.mesh.geometry.attributes.position, weight = rig.mesh.geometry.attributes.skinWeight, indices = rig.mesh.geometry.attributes.skinIndex;
     for (let i = 0; i < pos.count; i++) {
       let sum = 0;
-      for (let slot = 0; slot < 4; slot++) { const w = weight.array[i * 4 + slot]; assert.ok(w >= 0 && w <= 1); sum += w; assert.ok(indices.array[i * 4 + slot] < 13); }
+      for (let slot = 0; slot < 4; slot++) { const w = weight.array[i * 4 + slot]; assert.ok(w >= 0 && w <= 1); sum += w; assert.ok(indices.array[i * 4 + slot] < BONE_NAMES.length); }
       assert.ok(Math.abs(sum - 1) < 1e-6);
       const expected = rig.point(source.slice(i * 3, i * 3 + 3));
       const skinned = rig.mesh.applyBoneTransform(i, new THREE.Vector3().fromBufferAttribute(pos, i));
@@ -68,10 +69,10 @@ for (const name of ['boy', 'girl']) {
     }
     rig.skeleton.dispose(); rig.mesh.geometry.dispose(); rig.mesh.material.dispose();
   });
-  test(`${name}: finger sensor and both cable ends stay attached through the sleep pose`, async () => {
+  for (const site of ['finger', 'toe']) test(`${name}: ${site} sensor and cable ends follow the gaze, giggle and bedtime sequence`, async () => {
     const { rig } = await loadRig(name), kit = createEquipment(rig);
-    kit.place('oximeter', 'finger');
-    const sensor = kit.anchor('oximeter', 'finger');
+    kit.place('oximeter', site);
+    const sensor = kit.anchor('oximeter', site);
     const p = rig.profile.recorder;
     const end = rig.attach(new THREE.Object3D(), 'hips', [p[0], p[1] + .044, p[2] + .012]);
     const wire = rig.group.getObjectByName('equipment').children.find(child => child.isSkinnedMesh);
@@ -80,9 +81,13 @@ for (const name of ['boy', 'girl']) {
       for (let n = 0; n < 7; n++) center.add(wire.applyBoneTransform(ring * 8 + n, new THREE.Vector3().fromBufferAttribute(positions, ring * 8 + n)).applyMatrix4(wire.matrixWorld));
       return center.divideScalar(7);
     }
-    for (const sleep of [0, .5, 1]) {
-      rig.group.rotation.x = -Math.PI / 2 * sleep; rig.group.position.set(0, .83 * sleep, .84 * sleep);
-      rig.pose({ sleep, breath: .8 }); rig.group.updateMatrixWorld(true); rig.skeleton.update();
+    for (const time of [0, .12, .32, .50, .72, .88, 1]) {
+      const frame = bedtimeFrame(time, rig.rest.hips.toArray());
+      const gaze = gazeFor(rig.profile, rig.profile[site]);
+      rig.group.rotation.set(frame.rootX, frame.rootY, 0);
+      rig.group.position.fromArray(frame.hip).sub(rig.rest.hips.clone().applyQuaternion(rig.group.quaternion));
+      rig.pose({ ...frame, breath: .8, lookPitch: time === 0 ? gaze.pitch : 0, lookYaw: time === 0 ? gaze.yaw : 0, giggle: time === 0 ? .8 : 0 });
+      rig.group.updateMatrixWorld(true); rig.skeleton.update();
       assert.ok(ringCenter(0).distanceTo(sensor.getWorldPosition(new THREE.Vector3())) < 1e-5);
       assert.ok(ringCenter(48).distanceTo(end.getWorldPosition(new THREE.Vector3())) < 1e-5);
     }

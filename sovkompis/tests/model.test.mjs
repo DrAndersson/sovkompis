@@ -82,3 +82,18 @@ test('Oximeter follows the selected finger/toe site without moving other sensors
   assert.deepEqual(targetFor(EQUIPMENT[3], 'finger'), { x: 25, y: 65 });
   assert.deepEqual(targetFor(EQUIPMENT[4], 'toe'), EQUIPMENT[4].target);
 });
+
+test('Both oximeter sites are available together, but award credit only once', () => {
+  const targets = availableTargets([], 'oximeter').filter(t => t.id === 'oximeter');
+  assert.deepEqual(targets.map(t => t.targetId), ['oximeter-finger', 'oximeter-toe']);
+  assert.notDeepEqual(targetFor(targets[0], 'toe'), targetFor(targets[1], 'finger'));
+  for (const target of targets) {
+    assert.equal(placeEquipment([], 'thorax', target.targetId).correct, false);
+    const result = placeEquipment([], 'oximeter', target.targetId);
+    assert.equal(result.correct, true);
+    assert.equal(result.site, target.site);
+    assert.deepEqual(result.placed, ['oximeter']);
+    assert.equal(availableTargets(result.placed, 'cannula').some(t => t.id === 'oximeter'), false);
+    for (const again of targets) assert.equal(placeEquipment(result.placed, 'oximeter', again.targetId).correct, false);
+  }
+});

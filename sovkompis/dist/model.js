@@ -45,20 +45,24 @@ export function saveProgress(storage, progress) {
   try { storage.setItem(STORAGE_KEY, JSON.stringify(progress)); return true; } catch { return false; }
 }
 export function placeEquipment(placed, selectedId, targetId) {
-  if (!EQUIPMENT.some(e => e.id === selectedId) || selectedId !== targetId || placed.includes(selectedId)) return { placed, correct: false, complete: false };
+  const site = targetId === 'oximeter-toe' ? 'toe' : targetId === 'oximeter-finger' || targetId === 'oximeter' ? 'finger' : undefined;
+  const targetEquipment = site ? 'oximeter' : targetId;
+  if (!EQUIPMENT.some(e => e.id === selectedId) || selectedId !== targetEquipment || placed.includes(selectedId)) return { placed, correct: false, complete: false };
   const next = [...placed, selectedId];
-  return { placed: next, correct: true, complete: next.length === EQUIPMENT.length };
+  return { placed: next, correct: true, complete: next.length === EQUIPMENT.length, site };
 }
 export function completeRound(progress) {
   const rounds = progress.rounds + 1;
   return { ...progress, scoreVersion: 2, rounds, xp: progress.xp + ROUND_XP };
 }
-export function targetFor(item, site) { return item.id === 'oximeter' && site === 'toe' ? { x: 59, y: 91 } : item.target; }
+export function targetFor(item, site) { return item.id === 'oximeter' && (item.site || site) === 'toe' ? { x: 59, y: 91 } : item.target; }
 export function availableTargets(placed, selectedId) {
   const ecg = ECG_LEADS.some(lead => lead.id === selectedId);
   return EQUIPMENT.filter(item => !placed.includes(item.id) && (ecg
     ? item.kind === 'ecg'
     : selectedId === 'sentec'
       ? ['sentec', 'cannula', 'abdomen', 'oximeter'].includes(item.id)
-      : item.kind !== 'ecg' && item.id !== 'sentec'));
+      : item.kind !== 'ecg' && item.id !== 'sentec')).flatMap(item => item.id === 'oximeter'
+        ? ['finger', 'toe'].map(site => ({ ...item, site, targetId: `oximeter-${site}`, short: site === 'toe' ? 'Tå' : 'Finger' }))
+        : [{ ...item, targetId: item.id }]);
 }

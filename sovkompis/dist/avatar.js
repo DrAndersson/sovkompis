@@ -1,4 +1,4 @@
-import { ECG_LEADS } from './model.js?v=20261010-cozy';
+import { ECG_LEADS } from './model.js?v=20261010-motion';
 // Replace this renderer with a GLB/Three.js avatar later. Locations use a shared 0–100 coordinate space.
 export function avatarSVG(avatar, { id = 'avatar', placed = [], sleeping = false, site = 'finger' } = {}) {
   const p = key => `${id}-${key}`;

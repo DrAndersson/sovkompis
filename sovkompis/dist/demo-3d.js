@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createAvatarRig } from './rig-3d.js?v=20261010-cozy';
-import { createEquipment, createBedroom } from './equipment-3d.js?v=20261010-cozy';
-import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261010-cozy2';
-import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261010-cozy';
-import { equipmentSVG } from './avatar.js?v=20261010-cozy';
+import { createAvatarRig } from './rig-3d.js?v=20261010-motion';
+import { createEquipment, createBedroom, attachmentFor } from './equipment-3d.js?v=20261010-motion';
+import { BEDTIME_DURATION, REACTION_DURATION, bedtimeFrame, reactionFrame, gazeFor } from './motion-3d.js?v=20261010-motion';
+import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261010-motion';
+import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261010-motion';
+import { equipmentSVG } from './avatar.js?v=20261010-motion';
 
 const $ = selector => document.querySelector(selector);
 const STORAGE_KEY = 'sovkompis-demo3d-v1';
@@ -36,6 +37,8 @@ let stage = 'customize', rig, equipment, appearance, skeletonHelper, bedroom, fl
 let ambientLight, keyLight, fillLight;
 let placed = [], selected = null, counted = false, hinted = false, feedback = '', feedbackKind = '';
 let sleepStarted = 0, waveStarted = 0, lastAnimationFrame = 0;
+let lookFocus = null, focusUntil = 0, reaction = null, reactionTimer, lastPoseTime = 0;
+const gaze = { pitch: 0, yaw: 0 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const uniforms = {
   hairTint: { value: new THREE.Color() }, clothesTint: { value: new THREE.Color() },
@@ -52,7 +55,7 @@ function render() {
   requestAnimationFrame(now => {
     renderQueued = false;
     if (document.hidden) return;
-    const moving = stage === 'sleep' || waveStarted;
+    const moving = Boolean(rig);
     if (!moving || now - lastAnimationFrame > 30 || reducedMotion.matches) {
       updateAnimation(now); renderer.render(scene, camera); updateTargets(); lastAnimationFrame = now;
     }
@@ -239,7 +242,7 @@ async function loadModel(name) {
     skeletonHelper.visible = $('#show-rig').checked; scene.add(skeletonHelper);
     rig.pose(); resetView();
     const triangles = (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3;
-    $('#model-stats').textContent = `${triangles.toLocaleString('sv-SE')} trianglar · 13 ben · separata hår- och klädmasker.`;
+    $('#model-stats').textContent = `${triangles.toLocaleString('sv-SE')} trianglar · 15 ben · separata hår- och klädmasker.`;
     $('#load-state').hidden = true; host.setAttribute('aria-busy', 'false'); $('#start-practice').disabled = false; render();
   } catch (error) {
     disposeModel(gltf?.scene);
@@ -278,25 +281,54 @@ document.querySelectorAll('[data-model]').forEach(button => button.addEventListe
 }));
 
 function announce(message) { $('#demo-announcer').textContent = message; }
+function lookAtPart(id, site = progress.oximeterSite, duration = Infinity) {
+  if (!rig) return;
+  lookFocus = attachmentFor(rig, id, site).point;
+  focusUntil = performance.now() + duration; render();
+}
+function chuckle(id, site) {
+  reaction = { started: performance.now() }; lookAtPart(id, site, REACTION_DURATION + 350);
+  clearTimeout(reactionTimer);
+  reactionTimer = setTimeout(() => { reaction = null; render(); }, REACTION_DURATION);
+}
 function updateAnimation(now) {
   if (!rig) return;
   const sleeping = stage === 'sleep';
-  const t = sleeping ? (reducedMotion.matches ? 1 : Math.min(1, (now - sleepStarted) / 2200)) : 0;
-  const eased = t * t * (3 - 2 * t);
+  const preview = $('#sleep-preview').value;
+  const t = sleeping ? (preview !== 'auto' ? Number(preview) : reducedMotion.matches ? 1 : Math.min(1, (now - sleepStarted) / BEDTIME_DURATION)) : 0;
+  const frame = bedtimeFrame(t, rig.rest.hips.toArray());
+  const elapsed = Math.min(.05, Math.max(0, (now - lastPoseTime) / 1000)); lastPoseTime = now;
+  if (now > focusUntil) lookFocus = null;
+  const target = !sleeping && lookFocus ? gazeFor(rig.profile, lookFocus) : { pitch: 0, yaw: 0 };
+  for (const axis of ['pitch', 'yaw']) gaze[axis] = reducedMotion.matches ? 0 : THREE.MathUtils.damp(gaze[axis], target[axis], 9, elapsed);
+  const laugh = reaction && !sleeping ? reactionFrame(now - reaction.started) : { giggle: 0, eyes: 0, active: false };
   const waveTime = waveStarted ? (now - waveStarted) / 1900 : 0;
   const greet = waveStarted && waveTime < 1 && !reducedMotion.matches ? Math.sin(waveTime * Math.PI) * (.85 + .15 * Math.sin(waveTime * Math.PI * 6)) : 0;
   if (waveTime >= 1 || reducedMotion.matches) waveStarted = 0;
-  rig.group.rotation.set(-Math.PI / 2 * eased, 0, 0);
-  rig.group.position.set(0, .83 * eased, .84 * eased);
-  rig.pose({ sleep: eased, breath: sleeping && !reducedMotion.matches ? Math.sin(now / 1100) : 0, greet });
-  const eyesClosed = THREE.MathUtils.smoothstep(eased, .35, .75);
+  rig.group.rotation.set(frame.rootX, frame.rootY, 0);
+  // Preserve the pelvis anchor while the spine, knees and arms move independently.
+  rig.group.position.fromArray(frame.hip).sub(rig.rest.hips.clone().applyQuaternion(rig.group.quaternion));
+  rig.pose({ ...frame, breath: reducedMotion.matches ? 0 : Math.sin(now / (sleeping ? 1100 : 1550)) * (sleeping ? 1 : .6), greet, lookPitch: gaze.pitch, lookYaw: gaze.yaw, giggle: reducedMotion.matches ? 0 : laugh.giggle });
+  const eyesClosed = sleeping ? frame.eyes : reducedMotion.matches ? 0 : laugh.eyes;
   uniforms.sleepAmount.value = eyesClosed; appearance?.setSleep(eyesClosed);
-  ambientLight.intensity = THREE.MathUtils.lerp(2.2, .72, eased);
-  keyLight.intensity = THREE.MathUtils.lerp(2.6, .95, eased);
-  fillLight.intensity = THREE.MathUtils.lerp(1.5, .45, eased);
-  bedroom.getObjectByName('duvet').visible = eased > .86;
+  ambientLight.intensity = THREE.MathUtils.lerp(2.2, .72, frame.dim);
+  keyLight.intensity = THREE.MathUtils.lerp(2.6, .95, frame.dim);
+  fillLight.intensity = THREE.MathUtils.lerp(1.5, .45, frame.dim);
+  bedroom.position.z = sleeping ? frame.bedOffset : 0;
+  const duvet = bedroom.getObjectByName('duvet'), unfold = .08 + .92 * frame.blanket;
+  duvet.visible = true; duvet.scale.z = unfold; duvet.position.set(0, -.50 * (1 - frame.blanket), 1.28 * (1 - unfold));
+  $('#sleep-symbols').hidden = !sleeping || t < .98;
+  const caption = $('#bedtime-caption'); caption.hidden = !sleeping || t >= 1;
+  caption.textContent = { sitting: 'Först sätter vi oss…', 'legs-up': 'Upp med de små fötterna…', reclining: 'Huvudet på den mjuka kudden…', 'tucking-in': 'Och filten på. God natt! 💤' }[frame.phase] || '';
+  const bubble = $('#reaction-bubble'); bubble.hidden = !laugh.active;
+  if (laugh.active) {
+    const point = rig.bones.head.localToWorld(new THREE.Vector3(0, .53, .08)).project(camera);
+    bubble.style.left = `${THREE.MathUtils.clamp((point.x * .5 + .5) * host.clientWidth, 88, host.clientWidth - 88)}px`;
+    bubble.style.top = `${Math.max(44, (-point.y * .5 + .5) * host.clientHeight - 18)}px`;
+  }
   host.dataset.eyes = eyesClosed > .99 ? 'closed' : 'open';
-  host.dataset.pose = sleeping ? t < 1 ? 'settling' : 'sleep' : 'standing';
+  host.dataset.pose = sleeping ? frame.phase : laugh.active ? 'giggle' : 'standing';
+  host.dataset.gaze = lookFocus ? 'following' : 'rest';
 }
 function renderJourney() {
   $('#app').dataset.stage = stage;
@@ -310,6 +342,7 @@ function renderJourney() {
   $('#sleep-symbols').hidden = stage !== 'sleep';
   $('#celebration-3d').hidden = stage !== 'complete';
   $('#greet-3d').disabled = stage !== 'customize';
+  $('#sleep-preview').disabled = stage !== 'sleep';
   $('#demo-xp').textContent = `${progress.xp + (stage === 'practice' && !counted ? placed.length * XP_PER_PART : 0)} XP`;
   const titles = { customize: ['Träffa din kompis i 3D.', 'Välj figur, frisyr och favoritfärger. Du bestämmer.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'En mjuk kudde, en varm filt och en kompis som somnar.'] };
   $('#demo-title').textContent = titles[stage][0]; $('#demo-subtitle').textContent = titles[stage][1];
@@ -321,7 +354,8 @@ function renderJourney() {
 }
 function changeStage(next) {
   stage = next; selected = null; hinted = false;
-  if (next === 'sleep') { sleepStarted = performance.now(); waveStarted = 0; }
+  if (next !== 'complete') { reaction = null; clearTimeout(reactionTimer); lookFocus = null; }
+  if (next === 'sleep') { sleepStarted = performance.now(); waveStarted = 0; $('#sleep-preview').value = 'auto'; }
   if (next === 'customize') { placed = []; counted = false; equipment?.clear(); }
   renderJourney(); resetView();
   $('#demo-title').focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' });
@@ -346,23 +380,20 @@ function updateInventory() {
   $('#parts-count').textContent = `${placed.length} av ${EQUIPMENT.length}`;
   $('#progress-label-3d').textContent = `${placed.length}/${EQUIPMENT.length} delar`;
   $('#progress-fill-3d').style.width = `${placed.length / EQUIPMENT.length * 100}%`;
-  document.querySelectorAll('[data-site]').forEach(button => {
-    button.disabled = placed.includes('oximeter'); button.classList.toggle('active', button.dataset.site === progress.oximeterSite);
-    button.setAttribute('aria-pressed', String(button.dataset.site === progress.oximeterSite));
-  });
 }
 function updateCoach() {
   const item = EQUIPMENT.find(item => item.id === selected), success = feedbackKind === 'correct';
   $('#coach-card-3d').classList.toggle('success', success);
   $('#coach-overline').textContent = success ? 'FINT JOBBAT' : feedbackKind === 'retry' ? 'PROVA IGEN, I DIN TAKT' : item ? 'LÄR KÄNNA DELEN' : 'VI BÖRJAR HÄR';
   $('#coach-title').textContent = success ? 'Där satt den!' : item?.name || 'Vilken del vill du prova?';
-  const instruction = item?.id === 'oximeter' ? `Dra pulsoximetern till ${progress.oximeterSite === 'toe' ? 'tån' : 'fingret'}.` : item?.instruction;
+  const instruction = item?.id === 'oximeter' ? 'Sätt pulsoximetern på fingret eller tån. Båda går bra i övningen.' : item?.instruction;
   $('#coach-copy').textContent = feedback || (item ? `${item.description} ${instruction}` : 'Välj en del i listan. Det finns ingen brådska.');
   $('#hint-3d').hidden = !item; $('#hint-3d').textContent = hinted ? 'Dölj ledtråd' : 'Visa mig var';
 }
 function selectPart(id) {
   if (stage !== 'practice' || placed.includes(id) || !EQUIPMENT.some(item => item.id === id)) return;
   selected = id; feedback = ''; feedbackKind = ''; hinted = false;
+  lookAtPart(id);
   updateInventory(); updateCoach(); rebuildTargets(); resetView();
   announce(`${EQUIPMENT.find(item => item.id === id).name} vald. Välj en plats på figuren.`);
 }
@@ -370,12 +401,14 @@ function rebuildTargets() {
   $('#targets-3d').replaceChildren();
   if (stage !== 'practice' || !selected) return;
   for (const item of availableTargets(placed, selected)) {
-    const button = document.createElement('button'); button.className = 'target-3d'; button.dataset.target = item.id;
-    const label = item.id === 'oximeter' ? progress.oximeterSite === 'toe' ? 'Tå' : 'Finger' : item.short;
+    const button = document.createElement('button'); button.className = 'target-3d'; button.dataset.target = item.targetId; button.dataset.equipment = item.id; button.dataset.site = item.site || '';
+    const label = item.short;
     button.setAttribute('aria-label', `Placera vald del vid ${label.toLowerCase()}`);
     button.innerHTML = `<span>${item.number || '+'}</span><span class="target-name">${label}</span>`;
     button.classList.toggle('hinted', hinted && item.id === selected);
-    button.addEventListener('click', () => placePart(item.id)); $('#targets-3d').append(button);
+    button.addEventListener('pointerenter', () => lookAtPart(item.id, item.site));
+    button.addEventListener('focus', () => lookAtPart(item.id, item.site));
+    button.addEventListener('click', () => placePart(item.targetId)); $('#targets-3d').append(button);
   }
   updateTargets();
 }
@@ -386,7 +419,7 @@ function updateTargets() {
   const width = host.clientWidth, height = host.clientHeight;
   rig.group.updateMatrixWorld(true);
   for (const button of $('#targets-3d').children) {
-    const point = equipment.anchor(button.dataset.target, progress.oximeterSite).getWorldPosition(new THREE.Vector3()).project(camera);
+    const point = equipment.anchor(button.dataset.equipment, button.dataset.site || progress.oximeterSite).getWorldPosition(new THREE.Vector3()).project(camera);
     button.style.left = `${(point.x * .5 + .5) * width}px`; button.style.top = `${(-point.y * .5 + .5) * height}px`;
     // Hidden from the back; selecting another item or Framifrån returns to the front.
     button.hidden = point.z < -1 || point.z > 1 || camera.position.z < -.1;
@@ -398,7 +431,9 @@ function placePart(target) {
   if (!result.correct) {
     feedback = 'Nästan! Prova en annan plats. Du kan trycka på ”Visa mig var” om du vill ha hjälp.'; feedbackKind = 'retry'; updateCoach(); announce(feedback); return;
   }
-  equipment.place(selected, progress.oximeterSite); placed = result.placed; feedback = item.success; feedbackKind = 'correct'; selected = null; hinted = false;
+  if (result.site) { progress.oximeterSite = result.site; saveProgress(storage, progress); }
+  equipment.place(selected, progress.oximeterSite); chuckle(selected, progress.oximeterSite);
+  placed = result.placed; feedback = item.success; feedbackKind = 'correct'; selected = null; hinted = false;
   rebuildTargets(); updateInventory(); updateCoach();
   announce(`${feedback} Plus ${XP_PER_PART} XP. ${placed.length} av ${EQUIPMENT.length} delar på plats.`);
   if (result.complete) {
@@ -419,16 +454,14 @@ function placePart(target) {
 }
 $('#start-practice').onclick = startPractice;
 $('#go-sleep').onclick = () => changeStage('sleep');
+$('#replay-bedtime').onclick = () => { sleepStarted = performance.now(); $('#sleep-preview').value = 'auto'; resetView(); render(); };
+$('#sleep-preview').onchange = () => { if ($('#sleep-preview').value === 'auto') sleepStarted = performance.now(); render(); };
 $('#edit-avatar').onclick = $('#sleep-edit').onclick = () => changeStage('customize');
 document.querySelectorAll('[data-replay]').forEach(button => button.onclick = startPractice);
 $('#star-pajamas').onclick = () => { if (progress.rounds < 3) return; state[state.model].stars = !state[state.model].stars; save(); syncColors(); };
 $('#show-rig').onchange = event => { if (skeletonHelper) skeletonHelper.visible = event.target.checked; render(); };
 $('#greet-3d').onclick = () => { if (stage === 'customize') { waveStarted = performance.now(); render(); } };
 $('#hint-3d').onclick = () => { hinted = !hinted; rebuildTargets(); updateCoach(); render(); };
-document.querySelectorAll('[data-site]').forEach(button => button.onclick = () => {
-  if (placed.includes('oximeter')) return;
-  progress.oximeterSite = button.dataset.site; saveProgress(storage, progress); updateInventory(); updateCoach(); rebuildTargets(); render();
-});
 let dragging = null, suppressClickUntil = 0;
 const inventory = $('#equipment-3d-list');
 inventory.addEventListener('click', event => {
@@ -462,6 +495,7 @@ inventory.addEventListener('pointermove', event => {
   }
   dragging.ghost.style.left = `${event.clientX}px`; dragging.ghost.style.top = `${event.clientY}px`;
   const target = dropTargetAt(event.clientX, event.clientY);
+  if (target) lookAtPart(target.dataset.equipment, target.dataset.site || progress.oximeterSite);
   for (const button of $('#targets-3d').children) button.classList.toggle('drag-over', button === target);
 });
 function endDrag(event, cancelled = false) {
