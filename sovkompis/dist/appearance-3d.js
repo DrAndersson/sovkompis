@@ -9,7 +9,7 @@ export const HAIRSTYLES = [
 // separate from the rig makes future artist-made hair/face assets replaceable.
 export const APPEARANCE = {
   boy: { crown: [0, .805, .014], radius: [.145, .161, .131], frontEdge: 1.43, fringe: .49, eye: [.055, .754, .116], eyeSize: [.036, .033], skin: '#d7a88e' },
-  girl: { crown: [0, .765, .298], radius: [.146, .158, .144], frontEdge: 1.70, fringe: .25, eye: [.042, .682, .382], eyeSize: [.033, .034], skin: '#e2af91' },
+  girl: { crown: [0, .765, .298], radius: [.146, .158, .144], frontEdge: 1.76, fringe: .25, eye: [.042, .682, .382], eyeSize: [.033, .034], skin: '#e2af91' },
 };
 
 export function prepareAppearance(geometry) {
@@ -36,6 +36,7 @@ export function createAppearance(rig, name) {
   const hairMaterial = new THREE.MeshStandardMaterial({ color: '#594238', roughness: .8 });
   const detailMaterial = new THREE.MeshStandardMaterial({ color: '#e1b690', roughness: .9 });
   const lashMaterial = new THREE.MeshStandardMaterial({ color: '#49332e', roughness: .95 });
+  const scalpMaterial = new THREE.MeshStandardMaterial({ color: '#e9bd9e', roughness: .88 });
   let style = 'original';
 
   function ellipsoid(parent, center, radius, mat = hairMaterial, rotation = 0) {
@@ -76,6 +77,10 @@ export function createAppearance(rig, name) {
     geo.index.array.set(indices); geo.index.needsUpdate = true; geo.setDrawRange(0, indices.length);
     hair.visible = style !== 'original';
     if (style === 'original') return;
+    // The girl's hair shares its surface with the head. Its removal exposes
+    // an open back/temple edge; an inset skull closes that cavity while staying
+    // behind the original eyes, nose and mouth. The boy already has a full head.
+    if (name === 'girl') ellipsoid(hair, [0, .704, .304], [.116, .095, .075], scalpMaterial);
     scalp();
     const [x, y, z] = profile.crown, [rx, ry, rz] = profile.radius;
     if (style === 'short') {
@@ -111,6 +116,6 @@ export function createAppearance(rig, name) {
   function setColor(color, preview = false) { hairMaterial.color.set(preview ? '#e591e5' : color || '#594238'); }
   function setSleep(amount) { lids.visible = amount > .8; }
   // Shared materials need only one disposal; geometry is disposed by the owner.
-  function dispose() { hairMaterial.dispose(); detailMaterial.dispose(); lashMaterial.dispose(); }
+  function dispose() { hairMaterial.dispose(); detailMaterial.dispose(); lashMaterial.dispose(); scalpMaterial.dispose(); }
   return { setStyle, setColor, setSleep, dispose, root, hair, lids, originalIndex, croppedIndex };
 }

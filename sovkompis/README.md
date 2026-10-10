@@ -38,7 +38,7 @@ Avslutade 2D- och 3D-omgångar räknas gemensamt under `sovkompis-v1`; tidigare 
 
 ### Frisyrer och slutna ögon
 
-`dist/appearance-3d.js` ger varje 3D-figur sex val: original, kort, page, långt, två knutar och hästsvans. Originalets hårtrianglar döljs medan en passad hårhätta och separata hårdelar används. Båda modellerna behåller sina oförändrade originalfiler. Hårfärgen styr även de nya delarna. Frisyrerna sitter på huvudbenet och överlever byte mellan anpassning, övning och sömn. Byte tillbaka återställer originalets indexdata exakt, utan att skapa nya GPU-indexbuffertar.
+`dist/appearance-3d.js` ger varje 3D-figur sex val: original, kort, page, långt, två knutar och hästsvans. Originalets hårtrianglar döljs medan en passad hårhätta och separata hårdelar används. Flickans sammanhängande hår-/huvudyta kompletteras med en insänkt huvudform så att byte av frisyr inte lämnar hål bakom ansiktet. Båda modellerna behåller sina oförändrade originalfiler. Hårfärgen styr även de nya delarna. Frisyrerna sitter på huvudbenet och överlever byte mellan anpassning, övning och sömn. Byte tillbaka återställer originalets indexdata exakt, utan att skapa nya GPU-indexbuffertar.
 
 Vid sömn ersätter en mjukt avgränsad ansiktsmask ögontexturen med hudton, och böjda ögonfransar visas. Vid ny övning återkommer de öppna originalögonen och normal belysning. Masken använder modellens källkoordinater så att den följer riggen. Detta är ett procedurgjort demouttryck, inte en fullständig ansiktsrigg.
 

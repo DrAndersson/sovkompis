@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createAvatarRig } from './rig-3d.js?v=20261010-cozy';
 import { createEquipment, createBedroom } from './equipment-3d.js?v=20261010-cozy';
-import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261010-cozy';
+import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261010-cozy2';
 import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261010-cozy';
 import { equipmentSVG } from './avatar.js?v=20261010-cozy';
 
