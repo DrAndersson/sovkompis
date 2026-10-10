@@ -20,9 +20,11 @@ Uppläsning använder webbläsarens Web Speech API och tillgänglig svensk röst
 
 ## Separat 3D-demo
 
-Öppnas via **Din sovkompis → Öppna 3D-demon**, eller direkt på `demo-3d.html`. Både kort- och långhårig modell kan roteras och zoomas med mus, touch, knappar eller tangentbord. Hår och kläder har separata färgval, inklusive valfri färg och återställning av originaltexturen. Val sparas per modell under `sovkompis-demo3d-v1`; 2D-val och XP påverkas inte.
+Öppnas via **Din sovkompis → Öppna 3D-demon**, eller direkt på `demo-3d.html`. Både kort- och långhårig modell kan roteras och zoomas med mus, touch, knappar eller tangentbord. Hår och kläder har separata färgval, inklusive valfri färg och återställning av originaltexturen. Färg- och klädval sparas per modell under `sovkompis-demo3d-v1`. Knappen **Nu provar vi delarna** fortsätter till en 3D-övning med samma åtta delar som i 2D. Dragning, klick på del/plats och tangentbord stöds. Pulsoximeter kan placeras på finger eller tå. Efter åtta korrekta placeringar visas Bravo, konfetti och +210 XP, följt av en sovscen med utrustningen kvar.
 
-`dist/demo-3d.js` använder [Three.js](https://threejs.org/) **0.180.0**, distribuerat lokalt i `dist/vendor/three` (MIT-licens i dess `LICENSE`). Inga CDN- eller modellserveranrop behövs. Bara vald modell laddas; den tidigare modellens GPU-resurser frigörs vid byte. Scenen renderas vid interaktion och förändringar, utan ständig animationsloop. WebGL 2 krävs, och ett felmeddelande visas om stödet eller modellhämtningen saknas.
+Avslutade 2D- och 3D-omgångar räknas gemensamt under `sovkompis-v1`; tidigare poäng och 2D-utseendet bevaras. Efter tre omgångar finns både 2D-stjärntröjan och 3D-stjärnpyjamasen att välja. En pågående 3D-omgång sparas inte. Att ladda om sidan eller välja **Ändra din kompis** börjar om övningen utan att dra av intjänad XP.
+
+`dist/demo-3d.js` använder [Three.js](https://threejs.org/) **0.180.0**, distribuerat lokalt i `dist/vendor/three` (MIT-licens i dess `LICENSE`). Inga CDN- eller modellserveranrop behövs. Bara vald modell laddas; den tidigare modellens GPU-resurser frigörs vid byte. Scenen renderas vid interaktion och förändringar. Vinkningen och sovscenen animeras med upp till cirka 30 bildrutor per sekund, pausas i bakgrunden och respekterar `prefers-reduced-motion`. WebGL 2 krävs, och ett felmeddelande visas om stödet eller modellhämtningen saknas.
 
 ### Modeller och masker
 
@@ -34,7 +36,17 @@ Uppläsning använder webbläsarens Web Speech API och tillgänglig svensk röst
 - Maskerna skapas med `python3 tools/generate_masks.py` (kräver NumPy och Pillow). Skriptet sammanfogar UV-sömmar för att hitta komponenter. Pojkens separata hår- och klädytor kan väljas geometriskt. Flickans hår sitter ihop med huvudytan, så dess mask använder även färgprov från originaltexturen. Komponentvalen är anpassade till just dessa exporter.
 - **För utvecklare → Visa färgmasker** visar hår i magenta, kläder i cyan och oförändrade ytor i grått. Maskerna är en modellberoende demoutgångspunkt och bör finjusteras inför slutversionen. Testerna stoppar publicering om modellfilen ändrats utan att motsvarande maskdata har uppdaterats.
 
-Utrustningsövningen, belöningar och sovanimationen finns fortsatt i **2D-versionen**. För en komplett 3D-övning behövs senare riggning, animationer, utbytbara frisyrer samt namngivna fästpunkter och interaktion för sensorerna.
+### Enkel rigg och utrustning
+
+- `dist/rig-3d.js` normaliserar varje modell till två enheters höjd och bygger en riktig `THREE.SkinnedMesh` med 13 ben: höft, ryggrad, huvud, överarmar, underarmar, händer, ben och fötter. Varje vertex får upp till fyra normaliserade vikter. En sammanhängande huvud-/håryta behålls för att flickans långa hår ska följa huvudet även över ljusa texturpartier.
+- Ben, vikter och animationer skapas **i webbläsaren**; original-GLB-filerna ändras inte och innehåller fortfarande inget sparat skelett. Det här är en enkel procedurrigg för demon. En produktionsversion kan ersätta den med artistjusterade vikter och inbakade animationsklipp.
+- `ANATOMY` innehåller modellernas benpositioner och fästpunkter i originalkoordinater. EKG 1–3 följer samma rutin som i 2D: patientens övre höger, övre vänster och nedre vänster bröstkorg. Sentec sitter på bröstkorgen.
+- `dist/equipment-3d.js` bygger band, näsgrimma, elektroder, pulsoximeter, registreringsenhet, separat Sentec-monitor och kablar som 3D-geometri. Sensorerna sitter på sina ben. Kabelgeometrin viktas mellan sensorbenet och registreringsenhetens ben så att båda ändarna följer med i sovposen. Delarna är schematiska och visas över kläderna.
+- Fästpunkterna projiceras till knappar i 3D-vyn. Dragning använder samma mål och validering som klick, ger ingen XP vid fel och låser redan placerade delar. Vid val av del återgår kameran till framifrån; fria vyer finns för att granska resultatet. Mobilvyn visar alla åtta delarna i ett rutnät under en kvarliggande 3D-vy.
+- **För utvecklare → Visa rigg / Prova en vinkning** visar skelettet och en enkel armrörelse. Sovscenen lägger figuren på en säng, sänker armarna och lägger till en liten andningsrörelse. Ansiktet behåller avsiktligt öppna ögon och mun enligt beställningen.
+- `tests/rig-3d.test.mjs` kontrollerar båda verkliga modellernas vikter och oförändrade grundpose samt att sensor och båda kabeländarna sitter ihop före, under och efter sovrörelsen. Fästpunkternas patienthöger/vänster kontrolleras också.
+
+Den ursprungliga **2D-versionen** finns kvar. Utbytbara frisyrer, ansiktsanimationer och mer detaljerade riggar kan läggas till senare.
 
 ## Ändra innehåll eller byt till 3D
 
