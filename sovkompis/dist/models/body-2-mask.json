@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "model": "body-2.glb",
+  "sha256": "e2b7c6a1cc9899521cb285390c2db981685e9b66d33f8e7f213481cfe02a63ba",
+  "vertexCount": 20039,
+  "triangleCount": 20844,
+  "format": "float32-le-interleaved-hair-clothes-skin",
+  "excludedTriangles": [],
+  "visibleBounds": {
+    "min": [
+      -0.325439453125,
+      0.0,
+      -0.1457519829273224
+    ],
+    "max": [
+      0.325439453125,
+      0.99951171875,
+      0.1457519829273224
+    ]
+  },
+  "maskedVertices": {
+    "hair": 0,
+    "clothes": 11772,
+    "skin": 6034
+  }
+}

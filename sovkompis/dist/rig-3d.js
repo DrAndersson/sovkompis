@@ -4,24 +4,24 @@ import * as THREE from './vendor/three/build/three.module.min.js';
 // sides: negative X is the patient's right in the front view.
 export const ANATOMY = {
   boy: {
-    hips: [0, .37, .02], spine: [0, .54, .02], head: [0, .65, .025],
-    shoulder: [.105, .60, .015], elbow: [.193, .49, .025], hand: [.267, .395, .04],
-    leg: [.08, .365, .02], knee: [.10, .21, .025], foot: [.12, .075, .055], headStart: .66,
-    nose: [0, .714, .134], ear: [.123, .746, .035],
-    thorax: { y: .551, x: .119, z: .02, depth: .086 },
-    abdomen: { y: .442, x: .14, z: .027, depth: .091 },
-    sentec: [0, .609, .10], 'ecg-right': [-.073, .595, .103], 'ecg-left': [.073, .595, .103], 'ecg-lower': [.079, .495, .114],
-    finger: [-.292, .368, .065], toe: [.13, .046, .171], recorder: [.197, .315, .096],
+    hips: [0, .435, 0], spine: [0, .585, 0], head: [0, .712, 0],
+    shoulder: [.115, .652, 0], elbow: [.216, .545, -.005], hand: [.287, .439, -.008],
+    leg: [.095, .430, 0], knee: [.122, .255, .008], foot: [.145, .085, .025], headStart: .715,
+    nose: [0, .809, .142], ear: [.142, .825, .01],
+    thorax: { y: .605, x: .135, z: .007, depth: .088 },
+    abdomen: { y: .517, x: .153, z: .008, depth: .110 },
+    sentec: [0, .668, .078], 'ecg-right': [-.078, .650, .086], 'ecg-left': [.078, .650, .086], 'ecg-lower': [.118, .445, .105],
+    finger: [-.322, .393, .058], toe: [.157, .043, .150], recorder: [.209, .370, .108],
   },
   girl: {
-    hips: [0, .354, .29], spine: [0, .493, .29], head: [0, .604, .30],
-    shoulder: [.093, .565, .29], elbow: [.165, .455, .30], hand: [.221, .371, .313],
-    leg: [.075, .351, .29], knee: [.093, .205, .297], foot: [.107, .078, .31], headStart: .615,
-    nose: [0, .648, .404], ear: [.117, .691, .325],
-    thorax: { y: .527, x: .107, z: .297, depth: .075 },
-    abdomen: { y: .433, x: .13, z: .300, depth: .092 },
-    sentec: [0, .578, .359], 'ecg-right': [-.067, .567, .36], 'ecg-left': [.067, .567, .36], 'ecg-lower': [.075, .477, .381],
-    finger: [-.247, .343, .345], toe: [.113, .036, .412], recorder: [.174, .316, .379],
+    hips: [0, .433, -.015], spine: [0, .585, -.015], head: [0, .716, -.018],
+    shoulder: [.110, .650, -.012], elbow: [.196, .548, .010], hand: [.265, .447, .040],
+    leg: [.092, .429, -.005], knee: [.112, .255, .012], foot: [.130, .089, .025], headStart: .724,
+    nose: [.002, .809, .130], ear: [.144, .800, .007],
+    thorax: { y: .605, x: .124, z: -.008, depth: .095 },
+    abdomen: { y: .515, x: .151, z: -.006, depth: .120 },
+    sentec: [0, .668, .079], 'ecg-right': [-.072, .647, .086], 'ecg-left': [.072, .647, .086], 'ecg-lower': [.113, .445, .114],
+    finger: [-.303, .410, .100], toe: [.148, .047, .151], recorder: [.201, .365, .117],
   },
 };
 export const BONE_NAMES = ['hips', 'spine', 'head', 'upperArmR', 'forearmR', 'handR', 'upperArmL', 'forearmL', 'handL', 'legR', 'kneeR', 'footR', 'legL', 'kneeL', 'footL'];
@@ -33,8 +33,11 @@ export function vertexWeights(name, point, hair = 0) {
   if (hair > .5 || y >= p.headStart) return [['head', 1]];
   const head = smooth(p.headStart - .035, p.headStart, y);
   if (head > 0) return [['spine', 1 - head], ['head', head]];
-  if (y > p.hips[1] - .06) {
-    const arm = smooth(p.shoulder[0] * .85, p.shoulder[0] * 1.5, ax);
+  if (y > p.hips[1] - .12) {
+    // A sloping shoulder-to-hand boundary keeps low fingertips on the arms
+    // without assigning the sides of the trousers to an arm bone.
+    const edge = p.shoulder[0] * .85 + Math.max(0, p.shoulder[1] - y) * .35;
+    const arm = smooth(edge, edge + .055, ax);
     const hand = 1 - smooth(p.hand[1] + .015, p.hand[1] + .065, y);
     const forearm = 1 - smooth(p.elbow[1] - .015, p.elbow[1] + .065, y);
     if (arm > 0) return [['spine', 1 - arm], [`upperArm${side}`, arm * (1 - forearm)], [`forearm${side}`, arm * forearm * (1 - hand)], [`hand${side}`, arm * forearm * hand]];
@@ -49,28 +52,6 @@ export function vertexWeights(name, point, hair = 0) {
   return [['hips', 1 - spine], ['spine', spine]];
 }
 
-// A welded connected component keeps the girl's long hair and head rigid even
-// where a bright texture highlight falls outside the hair color mask.
-function headComponent(geometry) {
-  const p = geometry.attributes.position, parent = new Int32Array(p.count);
-  for (let i = 0; i < parent.length; i++) parent[i] = i;
-  const root = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  const join = (a, b) => { parent[root(a)] = root(b); };
-  const welded = new Map();
-  for (let i = 0; i < p.count; i++) {
-    const key = [p.getX(i), p.getY(i), p.getZ(i)].map(value => Math.round(value * 100000)).join(',');
-    if (welded.has(key)) join(i, welded.get(key)); else welded.set(key, i);
-  }
-  const faces = geometry.index.array; let top = faces[0];
-  for (let i = 0; i < faces.length; i += 3) {
-    join(faces[i], faces[i + 1]); join(faces[i + 1], faces[i + 2]);
-    for (let j = 0; j < 3; j++) if (p.getY(faces[i + j]) > p.getY(top)) top = faces[i + j];
-  }
-  const result = new Uint8Array(p.count), component = root(top);
-  for (let i = 0; i < p.count; i++) result[i] = Number(root(i) === component);
-  return result;
-}
-
 export function createAvatarRig(sourceMesh, name, metadata) {
   const profile = ANATOMY[name];
   const min = new THREE.Vector3().fromArray(metadata.visibleBounds.min);
@@ -81,10 +62,10 @@ export function createAvatarRig(sourceMesh, name, metadata) {
   const point = xyz => new THREE.Vector3().fromArray(xyz).sub(origin).multiplyScalar(scale);
   const group = new THREE.Group(); group.name = `${name}-rigged-avatar`;
   const geometry = sourceMesh.geometry;
-  const indices = [], weights = [], head = headComponent(geometry);
+  const indices = [], weights = [];
   const positions = geometry.attributes.position, mask = geometry.attributes.regionMask;
   for (let i = 0; i < positions.count; i++) {
-    const entries = vertexWeights(name, [positions.getX(i), positions.getY(i), positions.getZ(i)], Math.max(mask.getX(i), head[i]));
+    const entries = vertexWeights(name, [positions.getX(i), positions.getY(i), positions.getZ(i)], mask.getX(i));
     for (let slot = 0; slot < 4; slot++) {
       indices.push(entries[slot] ? BONE_NAMES.indexOf(entries[slot][0]) : 0);
       weights.push(entries[slot]?.[1] || 0);

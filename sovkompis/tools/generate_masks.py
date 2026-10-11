@@ -102,50 +102,37 @@ def components(pos, faces):
 
 
 def generate(name):
-    raw, pos, faces, rgb = read_glb(MODELS / f'{name}.glb')
+    filename = {'boy': 'body-1', 'girl': 'body-2'}[name]
+    raw, pos, faces, rgb = read_glb(MODELS / f'{filename}.glb')
     groups = components(pos, faces)
-    r, g, b = rgb.T
-    y = pos[:, 1]
     hair = np.zeros(len(pos), dtype=bool)
     clothes = np.zeros(len(pos), dtype=bool)
-    if name == 'boy':
-        # The supplied boy has a separate connected hair shell. Clothing shells
-        # are shirt, trousers, slippers, cuffs, pocket and buttons. Hands, ankles,
-        # face, brows and eyes have their own connected components.
-        hair[groups[0]] = True
-        clothing_groups = [2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 19, 22, 23, 24]
-    else:
-        # Hair and face are joined in the girl mesh. Segment brown within the
-        # head shell, retaining the main hair region and protecting peach skin.
-        brown = (r > g * 1.13) & (g > b * 1.03) & (r < .67) & (g < .48)
-        head = np.zeros(len(pos), dtype=bool)
-        head[groups[0]] = True
-        hair = largest_region(brown & head, pos, faces)
-        clothing_groups = [1, 2, 3, 4, 7, 8, 9, 10, 11, 16, 17, 26]
-    for group in clothing_groups:
-        clothes[groups[group]] = True
-    # Only verified skin surfaces are eligible. Separate eyebrows, eye meshes,
-    # teeth, mouth parts and slippers are never recolored. The shared girl
-    # head additionally uses per-fragment texture protection in the shader.
     skin = np.zeros(len(pos), dtype=bool)
-    for group in ([1, 4, 5, 25, 26] if name == 'boy' else [0, 5, 6, 12, 13]):
-        skin[groups[group]] = True
-    skin &= ~(hair | clothes)
-    # Both source exports include an isolated quad above the character. Exclude
-    # only that verified export artifact; original files stay untouched.
-    artifact = groups[30 if name == 'boy' else 25]
-    excluded = np.flatnonzero(np.isin(faces, artifact).any(axis=1))
-    visible_vertices = np.unique(np.delete(faces, excluded, axis=0))
+    if name == 'boy':
+        for i in [1, 2, 5, 6, 7, 8, 13, 14, 15, 16, 17, 18]:
+            clothes[groups[i]] = True
+        for i in [0, 3, 4, 19, 20]:
+            skin[groups[i]] = True
+    else:
+        # This export joins head, neck and pyjamas into one surface. Split at
+        # the neckline; eyes, brows, mouth, ears and hands remain independent.
+        main = np.array(groups[0])
+        skin[main[pos[main, 1] >= .702]] = True
+        clothes[main[pos[main, 1] < .702]] = True
+        for i in [1, 2, 11, 12, 13, 14, 16, 20, 21, 22, 23, 24, 25]:
+            clothes[groups[i]] = True
+        for i in [3, 4, 7, 8, 9, 10]:
+            skin[groups[i]] = True
     mask = np.stack([hair, clothes, skin], axis=1).astype('<f4')
-    mask.tofile(MODELS / f'{name}-mask-v2.bin')
-    metadata = {'version': 2, 'model': f'{name}.glb', 'sha256': hashlib.sha256(raw).hexdigest(),
+    mask.tofile(MODELS / f'{filename}-mask.bin')
+    metadata = {'version': 2, 'model': f'{filename}.glb', 'sha256': hashlib.sha256(raw).hexdigest(),
                 'vertexCount': len(pos), 'triangleCount': len(faces),
                 'format': 'float32-le-interleaved-hair-clothes-skin',
-                'excludedTriangles': excluded.tolist(),
-                'visibleBounds': {'min': pos[visible_vertices].min(0).tolist(), 'max': pos[visible_vertices].max(0).tolist()},
+                'excludedTriangles': [],
+                'visibleBounds': {'min': pos.min(0).tolist(), 'max': pos.max(0).tolist()},
                 'maskedVertices': {'hair': int(hair.sum()), 'clothes': int(clothes.sum()), 'skin': int(skin.sum())}}
-    (MODELS / f'{name}-mask-v2.json').write_text(json.dumps(metadata, indent=2) + '\n')
-    print(name, metadata['maskedVertices'], 'excluded triangles', len(excluded))
+    (MODELS / f'{filename}-mask.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    print(filename, metadata['maskedVertices'])
 
 
 if __name__ == '__main__':

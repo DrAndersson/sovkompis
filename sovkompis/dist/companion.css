@@ -24,3 +24,4 @@
 /* The main welcome uses the same live companion as the rest of the journey. */
 [data-stage="welcome"] .companion-layout{grid-template-columns:1fr 1fr;gap:55px;align-items:center}[data-stage="welcome"] .companion-viewer{height:510px;border-radius:46% 46% 22px 22px}[data-stage="welcome"] .viewer-heading{top:28px;justify-content:center}[data-stage="welcome"] .live-badge{display:none}
 @media(max-width:650px){[data-stage="welcome"] .companion-layout{gap:25px}[data-stage="welcome"] .welcome-copy{order:0}[data-stage="welcome"] .companion-viewer{order:1;position:relative;top:auto;height:350px;max-width:380px;align-self:center}[data-stage="welcome"] .viewer-heading{top:20px}}
+@media(min-width:651px){.companion-viewer{position:sticky;top:20px}}

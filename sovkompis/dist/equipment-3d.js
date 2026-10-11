@@ -11,7 +11,7 @@ export function attachmentFor(rig, id, site = 'finger') {
     const band = p[id]; return { point: [0, band.y, band.z + band.depth + .01], bone: id === 'thorax' ? 'spine' : 'hips' };
   }
   if (id === 'oximeter') return { point: p[site], bone: site === 'toe' ? 'footL' : 'handR' };
-  return { point: p[id], bone: 'spine' };
+  return { point: p[id], bone: id === 'ecg-lower' ? 'hips' : 'spine' };
 }
 export function createEquipment(rig) {
   const anchors = new Map(), placed = new Set();
@@ -102,7 +102,7 @@ export function createEquipment(rig) {
     }
     const number = { 'ecg-right': 1, 'ecg-left': 2, 'ecg-lower': 3 }[id];
     const color = ['#bd9c55', '#6da7ae', '#b08baa'][number - 1];
-    rig.attach(disc(.019, color, number), 'spine', pos); leadToRecorder(pos, color, 'spine', pos[0] < 0 ? -.026 : .024);
+    rig.attach(disc(.019, color, number), target.bone, pos); leadToRecorder(pos, color, target.bone, pos[0] < 0 ? -.026 : .024);
   }
   function clear() { rig.clearEquipment(); anchors.clear(); placed.clear(); recorderReady = false; }
   return { anchor, place, clear, placed };

@@ -1,0 +1,20 @@
+{
+  "hair-long.glb": {
+    "source": "hair long.glb",
+    "sourceSha256": "390fce76961ac960eb5e13b4f75e1bb264710e30aa1547079ce71a46de4887b9",
+    "sha256": "16c43d0c8c0c9818cdbf746382d70f2ad24ebe97585104dc878a13e6c1e13f3f",
+    "bytes": 604992
+  },
+  "hair-pigtails.glb": {
+    "source": "pigtail hair.glb",
+    "sourceSha256": "fa46358777edef22e4df8641f2e4c15056da50671e71000fb83a9f06d850e708",
+    "sha256": "7a728462e1896aa20b1cb5ef424a80a0eeb3252dedcdee17f882f1f1cc20c69b",
+    "bytes": 1774024
+  },
+  "hair-spiky.glb": {
+    "source": "short spiky hair 3d model.glb",
+    "sourceSha256": "48e329326e07b3715babdaf9e46d6fe2c6ae7df27d3fb86d3f82505714db60de",
+    "sha256": "a3cb89363a64c300838de2398bba562438ba107bd4c1554139e1933e463c3359",
+    "bytes": 1562576
+  }
+}

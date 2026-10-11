@@ -1,25 +1,26 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createAvatarRig } from './rig-3d.js?v=20261011-companion';
-import { createEquipment, createBedroom, attachmentFor } from './equipment-3d.js?v=20261011-companion';
-import { BEDTIME_DURATION, REACTION_DURATION, bedtimeFrame, reactionFrame, gazeFor, idleFrame, rejectionFrame, REJECTION_DURATION } from './motion-3d.js?v=20261011-companion';
-import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261011-companion';
-import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261011-companion';
-import { equipmentSVG } from './equipment-icons.js?v=20261011-companion';
+import { createAvatarRig } from './rig-3d.js?v=20261011-bodies';
+import { createEquipment, createBedroom, attachmentFor } from './equipment-3d.js?v=20261011-bodies';
+import { BEDTIME_DURATION, REACTION_DURATION, bedtimeFrame, reactionFrame, gazeFor, idleFrame, rejectionFrame, REJECTION_DURATION } from './motion-3d.js?v=20261011-bodies';
+import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261011-bodies';
+import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261011-bodies';
+import { equipmentSVG } from './equipment-icons.js?v=20261011-bodies';
 
-import { createPlacementAudio } from './placement-audio.js?v=20261011-companion';
+import { createPlacementAudio } from './placement-audio.js?v=20261011-bodies';
 
 const $ = selector => document.querySelector(selector);
 // Keep the historical key so existing 3D appearances survive the new main flow.
 const STORAGE_KEY = 'sovkompis-demo3d-v1';
-const modelNames = { boy: 'Din sovkompis · Pojke', girl: 'Din sovkompis · Flicka' };
+const modelNames = { boy: 'Din sovkompis · Kropp 1', girl: 'Din sovkompis · Kropp 2' };
+const modelFiles = { boy: 'body-1', girl: 'body-2' };
 const palettes = {
   hair: [['Brunt', '#594238'], ['Svart', '#292733'], ['Blont', '#d9b86b'], ['Koppar', '#af5936'], ['Rosa', '#d88cb1'], ['Lila', '#8d79b5']],
   skin: [['Ljus', '#f5d5bd'], ['Ljusbeige', '#e8b693'], ['Varmbeige', '#cc956d'], ['Mellanbrun', '#a96f4c'], ['Brun', '#7c4d34'], ['Mörkbrun', '#503021']],
   clothes: [['Salvia', '#7fa99b'], ['Blått', '#6f9fd3'], ['Rosa', '#d99fab'], ['Lila', '#a58bc9'], ['Gult', '#e2bd67'], ['Korall', '#da8774']],
 };
-const state = { sound: true, model: 'boy', boy: { hair: null, clothes: null, skin: null, hairstyle: 'original' }, girl: { hair: null, clothes: null, skin: null, hairstyle: 'original' } };
+const state = { sound: true, model: 'boy', boy: { hair: null, clothes: null, skin: null, hairstyle: 'spiky' }, girl: { hair: null, clothes: null, skin: null, hairstyle: 'long' } };
 try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
   state.sound = saved?.sound !== false;
@@ -28,7 +29,11 @@ try {
     if (/^#[\da-f]{6}$/i.test(saved?.[model]?.[part])) state[model][part] = saved[model][part];
   }
   for (const model of ['boy', 'girl']) state[model].stars = saved?.[model]?.stars === true;
-  for (const model of ['boy', 'girl']) if (HAIRSTYLES.some(([id]) => id === saved?.[model]?.hairstyle)) state[model].hairstyle = saved[model].hairstyle;
+  for (const model of ['boy', 'girl']) {
+    const old = saved?.[model]?.hairstyle;
+    const style = { original: model === 'boy' ? 'spiky' : 'long', short: 'spiky', bob: 'long', buns: 'pigtails', ponytail: 'pigtails' }[old] || old;
+    if (HAIRSTYLES.some(([id]) => id === style)) state[model].hairstyle = style;
+  }
 } catch { /* Storage is optional; the app works without it. */ }
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -99,7 +104,16 @@ function syncColors() {
 function syncHairstyle() {
   const style = state[state.model].hairstyle;
   document.querySelectorAll('[data-hairstyle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.hairstyle === style)));
-  appearance?.setStyle(style); render();
+  if (appearance) {
+    const active = appearance;
+    $('#hair-status').textContent = style === 'none' ? '' : 'Laddar frisyren…';
+    active.setStyle(style).then(ok => {
+      if (appearance !== active || state[state.model].hairstyle !== style) return;
+      $('#hair-status').textContent = ok ? '' : 'Frisyren kunde inte laddas. Tryck på den för att försöka igen.';
+      render();
+    });
+  }
+  render();
 }
 for (const [id, label] of HAIRSTYLES) {
   const button = document.createElement('button'); button.type = 'button'; button.dataset.hairstyle = id;
@@ -222,12 +236,12 @@ async function loadModel(name) {
   // Keep all promises settled, so a late GLB success can always be disposed even
   // if its companion mask request fails or another model supersedes this load.
   const results = await Promise.allSettled([
-    loader.loadAsync(`./models/${name}.glb`),
-    fetch(`./models/${name}-mask-v2.bin?v=20261011-companion`).then(response => {
+    loader.loadAsync(`./models/${modelFiles[name]}.glb`),
+    fetch(`./models/${modelFiles[name]}-mask.bin?v=20261011-bodies`).then(response => {
       if (!response.ok) throw new Error('Mask download failed');
       return response.arrayBuffer();
     }),
-    fetch(`./models/${name}-mask-v2.json?v=20261011-companion`).then(response => {
+    fetch(`./models/${modelFiles[name]}-mask.json?v=20261011-bodies`).then(response => {
       if (!response.ok) throw new Error('Mask metadata unavailable');
       return response.json();
     }),
@@ -252,9 +266,9 @@ async function loadModel(name) {
     mesh.castShadow = true; mesh.receiveShadow = true;
     const nextRig = createAvatarRig(mesh, name, metadata);
     if (skeletonHelper) { scene.remove(skeletonHelper); skeletonHelper.dispose(); }
-    scene.remove(currentModel); disposeModel(currentModel); appearance?.dispose();
+    appearance?.dispose(); scene.remove(currentModel); disposeModel(currentModel);
     rig = nextRig; currentModel = rig.group; scene.add(currentModel);
-    appearance = createAppearance(rig, name);
+    appearance = createAppearance(rig, name, path => loader.loadAsync(path));
     uniforms.eyeCenter.value.fromArray(APPEARANCE[name].eye); uniforms.eyeSize.value.fromArray(APPEARANCE[name].eyeSize); uniforms.lidColor.value.set(APPEARANCE[name].skin);
     syncHairstyle(); syncColors();
     equipment = createEquipment(rig);
@@ -379,7 +393,7 @@ function renderJourney() {
   $('#greet-3d').disabled = stage !== 'customize';
   $('#sleep-preview').disabled = stage !== 'sleep';
   $('#companion-xp').textContent = `${progress.xp + (stage === 'practice' && !counted ? placed.length * XP_PER_PART : 0)} XP`;
-  const titles = { welcome: ['Hej och välkommen till Sovkompis.', 'Vi tar det tillsammans, en liten bit i taget.'], customize: ['En kompis på ditt sätt.', 'Välj figur, frisyr och favoritfärger. Du bestämmer.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'En mjuk kudde, en varm filt och en kompis som somnar.'] };
+  const titles = { welcome: ['Hej och välkommen till Sovkompis.', 'Vi tar det tillsammans, en liten bit i taget.'], customize: ['En kompis på ditt sätt.', 'Välj kropp, frisyr och favoritfärger. Du bestämmer.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'En mjuk kudde, en varm filt och en kompis som somnar.'] };
   $('#companion-title').textContent = titles[stage][0]; $('#companion-subtitle').textContent = titles[stage][1];
   $('.viewer-hint').textContent = stage === 'practice' ? 'Välj del · dra eller tryck på en plats' : stage === 'sleep' ? 'Sov gott, lilla kompis · dra för att se från sidan' : 'Dra för att snurra · nyp för att zooma';
   $('#sleep-score').textContent = `${progress.rounds} ${progress.rounds === 1 ? 'övning klar' : 'övningar klara'} · ${progress.xp} XP samlade`;

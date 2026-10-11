@@ -7,10 +7,8 @@ import { createEquipment, attachmentFor } from '../dist/equipment-3d.js';
 import { bedtimeFrame, gazeFor } from '../dist/motion-3d.js';
 import { createAppearance, prepareAppearance, HAIRSTYLES } from '../dist/appearance-3d.js';
 
-async function loadRig(name) {
-  const raw = await readFile(new URL(`../dist/models/${name}.glb`, import.meta.url));
-  const metadata = JSON.parse(await readFile(new URL(`../dist/models/${name}-mask-v2.json`, import.meta.url), 'utf8'));
-  const mask = await readFile(new URL(`../dist/models/${name}-mask-v2.bin`, import.meta.url));
+async function loadGeometry(filename) {
+  const raw = await readFile(new URL(`../dist/models/${filename}`, import.meta.url));
   const length = raw.readUInt32LE(12), gltf = JSON.parse(raw.toString('utf8', 20, 20 + length));
   const binary = raw.subarray(28 + length);
   const primitive = gltf.meshes[0].primitives[0];
@@ -26,32 +24,45 @@ async function loadRig(name) {
   const geometry = new THREE.BufferGeometry(), source = attribute(primitive.attributes.POSITION);
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(source, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(attribute(primitive.attributes.NORMAL), 3));
+  geometry.setIndex(attribute(primitive.indices));
+  return { geometry, source };
+}
+async function loadRig(name) {
+  const filename = name === 'boy' ? 'body-1' : 'body-2';
+  const { geometry, source } = await loadGeometry(`${filename}.glb`);
+  const metadata = JSON.parse(await readFile(new URL(`../dist/models/${filename}-mask.json`, import.meta.url), 'utf8'));
+  const mask = await readFile(new URL(`../dist/models/${filename}-mask.bin`, import.meta.url));
   geometry.setAttribute('regionMask', new THREE.Float32BufferAttribute(Array.from({ length: mask.length / 4 }, (_, i) => mask.readFloatLE(i * 4)), 3));
-  geometry.setIndex(attribute(primitive.indices).filter((_, i) => !metadata.excludedTriangles.includes(Math.floor(i / 3))));
   prepareAppearance(geometry);
   return { rig: createAvatarRig(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()), name, metadata), source };
 }
+async function loadHair(path) {
+  const { geometry } = await loadGeometry(path.split('/').pop());
+  const scene = new THREE.Group(); scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()));
+  return { scene };
+}
 for (const name of ['boy', 'girl']) {
-  test(`${name}: hairstyles restore the original mesh and survive an equipment reset`, async () => {
-    const { rig } = await loadRig(name), appearance = createAppearance(rig, name), kit = createEquipment(rig);
+  test(`${name}: imported hair follows the head and survives an equipment reset without changing the body`, async () => {
+    const { rig } = await loadRig(name), appearance = createAppearance(rig, name, loadHair), kit = createEquipment(rig);
     const index = rig.mesh.geometry.index, original = Array.from(index.array);
     for (const [style] of HAIRSTYLES) {
-      appearance.setStyle(style);
-      assert.equal(rig.mesh.geometry.index, index, 'changing hair should reuse its GPU index buffer');
-      if (style !== 'original') {
-        assert.ok(rig.mesh.geometry.drawRange.count < original.length);
-        assert.ok(appearance.hair.children.length > 0);
-      }
+      assert.equal(await appearance.setStyle(style), true);
+      assert.deepEqual(Array.from(index.array), original, 'Separate hair must never remove body geometry');
+      assert.equal(appearance.hair.children.length, style === 'none' ? 0 : 1);
       kit.place('oximeter'); kit.clear();
-      assert.equal(appearance.root.parent, rig.bones.head, 'restarting practice must preserve the hairstyle and eyelids');
+      assert.equal(appearance.root.parent, rig.bones.head);
+      if (style !== 'none') {
+        const hair = appearance.hair.children[0];
+        const before = hair.getWorldPosition(new THREE.Vector3());
+        rig.pose({ lookYaw: .24, lookPitch: .3 });
+        assert.ok(hair.getWorldPosition(new THREE.Vector3()).distanceTo(before) > .01);
+        rig.pose();
+      }
     }
-    appearance.setStyle('original');
-    assert.deepEqual(Array.from(index.array), original);
-    assert.equal(rig.mesh.geometry.drawRange.count, original.length);
-    assert.equal(appearance.hair.visible, false);
+    await appearance.setStyle('none'); assert.equal(appearance.hair.visible, false);
     appearance.setSleep(1); assert.equal(appearance.lids.visible, true);
     appearance.setSleep(0); assert.equal(appearance.lids.visible, false);
-    appearance.dispose(); appearance.root.traverse(o => o.geometry?.dispose());
+    appearance.dispose(); assert.equal(appearance.root.parent, null);
     rig.skeleton.dispose(); rig.mesh.geometry.dispose(); rig.mesh.material.dispose();
   });
   test(`${name}: normalized 15-bone rig preserves the original mesh at rest`, async () => {
@@ -61,8 +72,13 @@ for (const name of ['boy', 'girl']) {
     const pos = rig.mesh.geometry.attributes.position, weight = rig.mesh.geometry.attributes.skinWeight, indices = rig.mesh.geometry.attributes.skinIndex;
     for (let i = 0; i < pos.count; i++) {
       let sum = 0;
-      for (let slot = 0; slot < 4; slot++) { const w = weight.array[i * 4 + slot]; assert.ok(w >= 0 && w <= 1); sum += w; assert.ok(indices.array[i * 4 + slot] < BONE_NAMES.length); }
+      for (let slot = 0; slot < 4; slot++) { const w = weight.array[i * 4 + slot]; assert.ok(w >= 0 && w <= 1); sum += w; assert.ok(indices.array[i * 4 + slot] < BONE_NAMES.length);
+        if (source[i * 3 + 1] < .3 && w > 0) assert.notEqual(BONE_NAMES[indices.array[i * 4 + slot]], 'head', 'Lower body must not follow the head'); }
       assert.ok(Math.abs(sum - 1) < 1e-6);
+      if (Math.abs(source[i * 3]) > .26 && source[i * 3 + 1] < .46) {
+        const bones = Array.from({ length: 4 }, (_, slot) => weight.array[i * 4 + slot] > .01 ? BONE_NAMES[indices.array[i * 4 + slot]] : '').filter(Boolean);
+        assert.ok(bones.every(bone => /Arm|forearm|hand/.test(bone)), 'Low fingertips must not be weighted to the legs');
+      }
       const expected = rig.point(source.slice(i * 3, i * 3 + 3));
       const skinned = rig.mesh.applyBoneTransform(i, new THREE.Vector3().fromBufferAttribute(pos, i));
       assert.ok(skinned.distanceTo(expected) < 1e-5, `rest vertex ${i} drifted`);
@@ -98,10 +114,30 @@ for (const name of ['boy', 'girl']) {
     const { rig } = await loadRig(name);
     const right = attachmentFor(rig, 'ecg-right'), left = attachmentFor(rig, 'ecg-left'), lower = attachmentFor(rig, 'ecg-lower');
     assert.ok(right.point[0] < 0 && left.point[0] > 0 && lower.point[0] > 0);
-    assert.ok(lower.point[1] < left.point[1]);
+    assert.ok(lower.point[1] < rig.profile.abdomen.y);
+    assert.ok(Math.abs(lower.point[1] - rig.profile.hips[1]) < .03);
+    assert.equal(lower.bone, 'hips');
     assert.equal(attachmentFor(rig, 'oximeter', 'finger').bone, 'handR');
     assert.equal(attachmentFor(rig, 'oximeter', 'toe').bone, 'footL');
     assert.ok(ANATOMY[name].nose[1] > ANATOMY[name].sentec[1]);
     rig.skeleton.dispose(); rig.mesh.geometry.dispose(); rig.mesh.material.dispose();
   });
 }
+
+test('Late hair downloads cannot replace a newer selection or attach to a disposed body', async () => {
+  const { rig } = await loadRig('boy'), waiting = new Map();
+  const appearance = createAppearance(rig, 'boy', path => new Promise(resolve => waiting.set(path, resolve)));
+  const first = appearance.setStyle('spiky'), second = appearance.setStyle('long');
+  waiting.get('./models/hair-long.glb')(await loadHair('./models/hair-long.glb'));
+  assert.equal(await second, true);
+  waiting.get('./models/hair-spiky.glb')(await loadHair('./models/hair-spiky.glb'));
+  assert.equal(await first, false);
+  assert.equal(appearance.hair.children[0].name, 'hair-long');
+  const late = appearance.setStyle('pigtails'); appearance.dispose();
+  const unused = await loadHair('./models/hair-pigtails.glb');
+  let freed = false; unused.scene.children[0].geometry.addEventListener('dispose', () => { freed = true; });
+  waiting.get('./models/hair-pigtails.glb')(unused);
+  assert.equal(await late, false); assert.equal(freed, true);
+  assert.equal(appearance.root.parent, null);
+  rig.skeleton.dispose(); rig.mesh.geometry.dispose(); rig.mesh.material.dispose();
+});

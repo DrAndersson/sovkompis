@@ -4,12 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-for (const name of ['boy', 'girl']) {
-  test(`${name}: masks match the exact GLB vertex order and excluded export geometry`, async () => {
+for (const name of ['body-1', 'body-2']) {
+  test(`${name}: masks match the exact GLB vertex order and body geometry`, async () => {
     const base = fileURLToPath(new URL(`../dist/models/${name}`, import.meta.url));
     const [glb, mask, metadata] = await Promise.all([
-      readFile(`${base}.glb`), readFile(`${base}-mask-v2.bin`),
-      readFile(`${base}-mask-v2.json`, 'utf8').then(JSON.parse),
+      readFile(`${base}.glb`), readFile(`${base}-mask.bin`),
+      readFile(`${base}-mask.json`, 'utf8').then(JSON.parse),
     ]);
     assert.equal(glb.toString('ascii', 0, 4), 'glTF');
     assert.equal(createHash('sha256').update(glb).digest('hex'), metadata.sha256, 'Rebuild and review masks when replacing a model');
@@ -30,8 +30,9 @@ for (const name of ['boy', 'girl']) {
       assert.ok(weights.reduce((a, b) => a + b, 0) <= 1, 'Hair, clothing and skin must not overlap');
     }
     assert.deepEqual(counts, [metadata.maskedVertices.hair, metadata.maskedVertices.clothes, metadata.maskedVertices.skin]);
-    assert.ok(counts.every(count => count > 1000 && count < vertices * .75));
-    assert.equal(metadata.excludedTriangles.length, 2);
+    assert.equal(counts[0], 0, 'Bodies are bald; hair is a separate GLB');
+    assert.ok(counts.slice(1).every(count => count > 1000 && count < vertices * .75));
+    assert.equal(metadata.excludedTriangles.length, 0);
     for (const face of metadata.excludedTriangles) assert.ok(Number.isInteger(face) && face >= 0 && face < triangles);
     const positions = gltf.accessors[primitive.attributes.POSITION];
     for (let axis = 0; axis < 3; axis++) {
@@ -41,3 +42,18 @@ for (const name of ['boy', 'girl']) {
     }
   });
 }
+
+
+test('Web hair copies match their manifests and retain textured geometry within a mobile-sized budget', async () => {
+  const folder = new URL('../dist/models/', import.meta.url);
+  const manifest = JSON.parse(await readFile(new URL('hair-assets.json', folder), 'utf8'));
+  for (const [file, entry] of Object.entries(manifest)) {
+    const raw = await readFile(new URL(file, folder));
+    assert.equal(createHash('sha256').update(raw).digest('hex'), entry.sha256);
+    assert.ok(raw.length < 2_000_000);
+    const gltf = JSON.parse(raw.toString('utf8', 20, 20 + raw.readUInt32LE(12)));
+    assert.equal(gltf.images.length, 1);
+    assert.ok(gltf.meshes[0].primitives[0].attributes.TEXCOORD_0 !== undefined);
+    assert.ok(gltf.accessors[gltf.meshes[0].primitives[0].indices].count > 20000);
+  }
+});

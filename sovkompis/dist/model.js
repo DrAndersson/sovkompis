@@ -3,9 +3,9 @@ export const XP_PER_PART = 20;
 export const COMPLETION_BONUS = 50;
 // Patient's right is on the left of the front-facing avatar. Positions are schematic.
 export const ECG_LEADS = [
-  { id: 'ecg-right', number: 1, short: 'Övre höger', location: 'övre högra delen', target: { x: 36, y: 45 }, cable: 'M130 207Q112 244 142 283L267 335' },
-  { id: 'ecg-left', number: 2, short: 'Övre vänster', location: 'övre vänstra delen', target: { x: 64, y: 45 }, cable: 'M230 207Q260 257 241 290L267 335' },
-  { id: 'ecg-lower', number: 3, short: 'Nedre vänster', location: 'nedre vänstra delen', target: { x: 62, y: 59 }, cable: 'M223 271Q201 310 267 335' },
+  { id: 'ecg-right', number: 1, short: 'Övre höger', location: 'övre högra delen av bröstkorgen', target: { x: 36, y: 45 }, cable: 'M130 207Q112 244 142 283L267 335' },
+  { id: 'ecg-left', number: 2, short: 'Övre vänster', location: 'övre vänstra delen av bröstkorgen', target: { x: 64, y: 45 }, cable: 'M230 207Q260 257 241 290L267 335' },
+  { id: 'ecg-lower', number: 3, short: 'Vänster höft', location: 'vänstra höften', target: { x: 65, y: 71 }, cable: 'M223 271Q201 310 267 335' },
 ];
 export const EQUIPMENT = [
   { id: 'cannula', name: 'Näsgrimma', short: 'Näsan', color: '#87b6c7', description: 'Den tunna slangen känner av luften när du andas.', instruction: 'Dra näsgrimman till näsan på din sovkompis.', success: 'Fint! Näsgrimman sitter vid näsan.', target: { x: 50, y: 33 } },
@@ -13,7 +13,7 @@ export const EQUIPMENT = [
   { id: 'abdomen', name: 'Magband', short: 'Mage', color: '#a18bb3', description: 'Det här bandet följer magens rörelser när du andas.', instruction: 'Dra magbandet till magen, under bröstbandet.', success: 'Där satt det! Magbandet får följa med när magen rör sig.', target: { x: 50, y: 65 } },
   { id: 'oximeter', name: 'Pulsoximeter', short: 'Finger', color: '#cb9974', description: 'En liten sensor mäter syresättningen i blodet och din puls.', instruction: 'Dra pulsoximetern till den markerade handen eller foten.', success: 'Bra jobbat! Nu är pulsoximetern på plats.', target: { x: 25, y: 65 } },
   { id: 'sentec', name: 'Koldioxidmätare', short: 'Övre bröstkorg', color: '#9caa72', description: 'Sensorn sitter mot huden och mäter koldioxid genom huden. En sladd går till monitorn.', instruction: 'Dra koldioxidmätaren till övre delen av bröstkorgen. Personalen visar den exakta platsen på dig.', success: 'Toppen! Koldioxidmätaren och sladden är på plats.', target: { x: 50, y: 45 } },
-  ...ECG_LEADS.map(lead => ({ ...lead, kind: 'ecg', name: `EKG-kabel ${lead.number}`, subtitle: lead.short, color: '#719ca4', description: 'Tre små klisterlappar med kablar hjälper till att registrera hjärtats slag. De sitter mot huden.', instruction: `Sätt kabel ${lead.number} på ${lead.location} av bröstkorgen, räknat från din sovkompis håll. Personalen visar exakt var på dig.`, success: `Fint! EKG-kabel ${lead.number} sitter på ${lead.location} av bröstkorgen.` })),
+  ...ECG_LEADS.map(lead => ({ ...lead, kind: 'ecg', name: `EKG-kabel ${lead.number}`, subtitle: lead.short, color: '#719ca4', description: 'Tre små klisterlappar med kablar hjälper till att registrera hjärtats slag. De sitter mot huden.', instruction: `Sätt kabel ${lead.number} på ${lead.location}, räknat från din sovkompis håll. Personalen visar exakt var på dig.`, success: `Fint! EKG-kabel ${lead.number} sitter på ${lead.location}.` })),
 ];
 export const ROUND_XP = EQUIPMENT.length * XP_PER_PART + COMPLETION_BONUS;
 export const DEFAULT_AVATAR = { name: 'Min sovkompis', skin: '#edbb96', hairColor: '#594238', hair: 'wave', eyes: 'round', outfit: '#7fa99b' };
