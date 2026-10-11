@@ -19,3 +19,5 @@
 @media(max-width:650px){.reaction-bubble{font-size:10px;padding:9px 12px}.bedtime-caption{bottom:86px;font-size:10px}}
 
 @media(max-width:650px){.target-3d[data-target="oximeter-toe"] .target-name{top:4px;left:32px}}
+
+.mask-key .skin-key{background:#edb86b}.demo-swatches button[data-part="skin"][aria-pressed="true"]{color:#fff;text-shadow:0 1px 3px #43281e,0 0 2px #43281e}

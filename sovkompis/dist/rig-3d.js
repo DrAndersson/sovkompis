@@ -134,18 +134,18 @@ export function createAvatarRig(sourceMesh, name, metadata) {
     const item = new THREE.SkinnedMesh(geo, material); item.frustumCulled = false;
     attachments.add(item); group.updateMatrixWorld(true); item.bind(skeleton, mesh.bindMatrix); objects.push(item); return item;
   }
-  function pose({ sleep = 0, breath = 0, greet = 0, lookPitch = 0, lookYaw = 0, giggle = 0, legR = 0, legL = 0, kneeR = 0, kneeL = 0, curl = 0, support = 0, tuck = 0 } = {}) {
+  function pose({ sleep = 0, breath = 0, greet = 0, lookPitch = 0, lookYaw = 0, giggle = 0, legR = 0, legL = 0, kneeR = 0, kneeL = 0, curl = 0, support = 0, tuck = 0, sway = 0, headTilt = 0, shoulders = 0 } = {}) {
     for (const bone of boneList) { bone.rotation.set(0, 0, 0); bone.position.copy(restLocal[bone.name]); }
     bones.spine.rotation.x = breath * .006 + curl + giggle * .024;
-    bones.spine.rotation.z = giggle * .015;
+    bones.spine.rotation.z = giggle * .015 + sway;
     bones.spine.position.y += Math.abs(giggle) * .007;
-    bones.head.rotation.z = sleep * .06 + giggle * .035;
+    bones.head.rotation.z = sleep * .06 + giggle * .035 + headTilt;
     // Head movement carries hair, eyelids and the cannula with it.
     bones.head.position.z += sleep * .06;
     bones.head.rotation.x = sleep * .1 + lookPitch + curl * .35;
     bones.head.rotation.y = lookYaw;
-    bones.upperArmR.rotation.z = sleep * .23 + support * .36 + Math.abs(giggle) * .055;
-    bones.upperArmL.rotation.z = -sleep * .23 - support * .30 - Math.abs(giggle) * .055;
+    bones.upperArmR.rotation.z = sleep * .23 + support * .36 + Math.abs(giggle) * .055 + shoulders;
+    bones.upperArmL.rotation.z = -sleep * .23 - support * .30 - Math.abs(giggle) * .055 - shoulders;
     bones.upperArmR.rotation.x = support * .30 - tuck * .50;
     bones.upperArmL.rotation.x = support * .25 - tuck * .44;
     bones.forearmR.rotation.y = -sleep * .10;

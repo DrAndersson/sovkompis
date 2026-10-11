@@ -43,3 +43,18 @@ export function gazeFor(profile, point) {
   const dx = point[0] - profile.head[0], down = profile.head[1] - point[1];
   return { yaw: Math.max(-.46, Math.min(.46, dx * 1.65)), pitch: Math.max(.07, Math.min(.52, .17 + down * .9)) };
 }
+
+// Quiet waiting gestures with pauses between them. Side glances are suppressed
+// by the controller while the patient is choosing or placing equipment.
+export function idleFrame(milliseconds, offset = 0) {
+  const seconds = milliseconds / 1000 + offset, t = ((seconds % 23) + 23) % 23;
+  const pulse = (start, duration) => t < start || t > start + duration ? 0 : Math.sin((t - start) / duration * Math.PI) ** 2;
+  return {
+    yaw: .16 * pulse(2, 3.2) - .14 * pulse(12, 3.8),
+    pitch: .055 * pulse(6, 2.4),
+    headTilt: .05 * pulse(16, 3.4) - .035 * pulse(3, 2.5),
+    sway: .012 * Math.sin(seconds * .65),
+    shoulders: .035 * pulse(18, 3),
+    blink: Math.max(pulse(4.1, .30), pulse(10.3, .32), pulse(10.85, .27), pulse(20.1, .34)),
+  };
+}

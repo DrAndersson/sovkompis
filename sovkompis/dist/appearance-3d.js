@@ -8,8 +8,8 @@ export const HAIRSTYLES = [
 // All measurements use the supplied GLBs' source coordinates. Keeping these
 // separate from the rig makes future artist-made hair/face assets replaceable.
 export const APPEARANCE = {
-  boy: { crown: [0, .805, .014], radius: [.145, .161, .131], frontEdge: 1.43, fringe: .49, eye: [.055, .754, .116], eyeSize: [.036, .033], skin: '#d7a88e' },
-  girl: { crown: [0, .765, .298], radius: [.146, .158, .144], frontEdge: 1.76, fringe: .25, eye: [.042, .682, .382], eyeSize: [.033, .034], skin: '#e2af91' },
+  boy: { crown: [0, .805, .014], radius: [.145, .161, .131], frontEdge: 1.43, fringe: .49, eye: [.055, .754, .116], eyeSize: [.036, .033], skin: '#d7a88e', skinBase: '#efb089' },
+  girl: { crown: [0, .765, .298], radius: [.146, .158, .144], frontEdge: 1.76, fringe: .25, eye: [.042, .682, .382], eyeSize: [.033, .034], skin: '#e2af91', skinBase: '#f2ad7d' },
 };
 
 export function prepareAppearance(geometry) {
@@ -114,8 +114,9 @@ export function createAppearance(rig, name) {
     strand(points, .0017, lashMaterial, lids);
   }
   function setColor(color, preview = false) { hairMaterial.color.set(preview ? '#e591e5' : color || '#594238'); }
+  function setSkinColor(color, preview = false) { scalpMaterial.color.set(preview ? '#edb86b' : color || '#e9bd9e'); }
   function setSleep(amount) { lids.visible = amount > .8; }
   // Shared materials need only one disposal; geometry is disposed by the owner.
   function dispose() { hairMaterial.dispose(); detailMaterial.dispose(); lashMaterial.dispose(); scalpMaterial.dispose(); }
-  return { setStyle, setColor, setSleep, dispose, root, hair, lids, originalIndex, croppedIndex };
+  return { setStyle, setColor, setSkinColor, setSleep, dispose, root, hair, lids, originalIndex, croppedIndex };
 }

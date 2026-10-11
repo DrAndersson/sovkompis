@@ -1,7 +1,7 @@
 """Generate geometry masks for the two supplied, unrigged GLB demo models.
 
 Requires numpy and Pillow. Run from any directory; generated files are committed.
-Each vertex stores two little-endian float32 weights: hair, clothing.
+Each vertex stores three little-endian float32 weights: hair, clothing, skin.
 Original GLBs and their embedded textures remain unchanged.
 """
 from pathlib import Path
@@ -124,20 +124,27 @@ def generate(name):
         clothing_groups = [1, 2, 3, 4, 7, 8, 9, 10, 11, 16, 17, 26]
     for group in clothing_groups:
         clothes[groups[group]] = True
+    # Only verified skin surfaces are eligible. Separate eyebrows, eye meshes,
+    # teeth, mouth parts and slippers are never recolored. The shared girl
+    # head additionally uses per-fragment texture protection in the shader.
+    skin = np.zeros(len(pos), dtype=bool)
+    for group in ([1, 4, 5, 25, 26] if name == 'boy' else [0, 5, 6, 12, 13]):
+        skin[groups[group]] = True
+    skin &= ~(hair | clothes)
     # Both source exports include an isolated quad above the character. Exclude
     # only that verified export artifact; original files stay untouched.
     artifact = groups[30 if name == 'boy' else 25]
     excluded = np.flatnonzero(np.isin(faces, artifact).any(axis=1))
     visible_vertices = np.unique(np.delete(faces, excluded, axis=0))
-    mask = np.stack([hair, clothes], axis=1).astype('<f4')
-    mask.tofile(MODELS / f'{name}-mask.bin')
-    metadata = {'version': 1, 'model': f'{name}.glb', 'sha256': hashlib.sha256(raw).hexdigest(),
+    mask = np.stack([hair, clothes, skin], axis=1).astype('<f4')
+    mask.tofile(MODELS / f'{name}-mask-v2.bin')
+    metadata = {'version': 2, 'model': f'{name}.glb', 'sha256': hashlib.sha256(raw).hexdigest(),
                 'vertexCount': len(pos), 'triangleCount': len(faces),
-                'format': 'float32-le-interleaved-hair-clothes',
+                'format': 'float32-le-interleaved-hair-clothes-skin',
                 'excludedTriangles': excluded.tolist(),
                 'visibleBounds': {'min': pos[visible_vertices].min(0).tolist(), 'max': pos[visible_vertices].max(0).tolist()},
-                'maskedVertices': {'hair': int(hair.sum()), 'clothes': int(clothes.sum())}}
-    (MODELS / f'{name}-mask.json').write_text(json.dumps(metadata, indent=2) + '\n')
+                'maskedVertices': {'hair': int(hair.sum()), 'clothes': int(clothes.sum()), 'skin': int(skin.sum())}}
+    (MODELS / f'{name}-mask-v2.json').write_text(json.dumps(metadata, indent=2) + '\n')
     print(name, metadata['maskedVertices'], 'excluded triangles', len(excluded))
 
 

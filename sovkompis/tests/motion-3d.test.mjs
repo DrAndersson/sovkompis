@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bedtimeFrame, reactionFrame, REACTION_DURATION, gazeFor } from '../dist/motion-3d.js';
+import { bedtimeFrame, reactionFrame, REACTION_DURATION, gazeFor, idleFrame } from '../dist/motion-3d.js';
 import { ANATOMY } from '../dist/rig-3d.js';
 
 test('Bedtime bends the knees before reclining and ends in the established bed pose', () => {
@@ -34,4 +34,16 @@ test('Gaze follows the patient side and giggles settle without residual movement
   assert.ok(Math.abs(reactionFrame(REACTION_DURATION / 2).giggle) > .5);
   assert.equal(reactionFrame(REACTION_DURATION).active, false);
   assert.ok(Math.abs(reactionFrame(REACTION_DURATION).giggle) < 1e-9);
+});
+
+test('Idle animation stays subtle and periodically blinks with resting intervals', () => {
+  const frames = Array.from({ length: 2301 }, (_, i) => idleFrame(i * 10));
+  assert.ok(frames.some(f => f.blink > .99));
+  assert.ok(frames.filter(f => f.blink === 0).length > frames.length * .90);
+  assert.ok(frames.some(f => f.yaw > .1) && frames.some(f => f.yaw < -.1));
+  for (const f of frames) {
+    assert.ok(Object.values(f).every(Number.isFinite));
+    assert.ok(Math.abs(f.sway) <= .012 && Math.abs(f.headTilt) <= .05);
+    assert.ok(f.blink >= 0 && f.blink <= 1);
+  }
 });

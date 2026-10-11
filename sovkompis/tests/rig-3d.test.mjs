@@ -9,8 +9,8 @@ import { createAppearance, prepareAppearance, HAIRSTYLES } from '../dist/appeara
 
 async function loadRig(name) {
   const raw = await readFile(new URL(`../dist/models/${name}.glb`, import.meta.url));
-  const metadata = JSON.parse(await readFile(new URL(`../dist/models/${name}-mask.json`, import.meta.url), 'utf8'));
-  const mask = await readFile(new URL(`../dist/models/${name}-mask.bin`, import.meta.url));
+  const metadata = JSON.parse(await readFile(new URL(`../dist/models/${name}-mask-v2.json`, import.meta.url), 'utf8'));
+  const mask = await readFile(new URL(`../dist/models/${name}-mask-v2.bin`, import.meta.url));
   const length = raw.readUInt32LE(12), gltf = JSON.parse(raw.toString('utf8', 20, 20 + length));
   const binary = raw.subarray(28 + length);
   const primitive = gltf.meshes[0].primitives[0];
@@ -26,7 +26,7 @@ async function loadRig(name) {
   const geometry = new THREE.BufferGeometry(), source = attribute(primitive.attributes.POSITION);
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(source, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(attribute(primitive.attributes.NORMAL), 3));
-  geometry.setAttribute('regionMask', new THREE.Float32BufferAttribute(Array.from({ length: mask.length / 4 }, (_, i) => mask.readFloatLE(i * 4)), 2));
+  geometry.setAttribute('regionMask', new THREE.Float32BufferAttribute(Array.from({ length: mask.length / 4 }, (_, i) => mask.readFloatLE(i * 4)), 3));
   geometry.setIndex(attribute(primitive.indices).filter((_, i) => !metadata.excludedTriangles.includes(Math.floor(i / 3))));
   prepareAppearance(geometry);
   return { rig: createAvatarRig(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()), name, metadata), source };
@@ -86,7 +86,7 @@ for (const name of ['boy', 'girl']) {
       const gaze = gazeFor(rig.profile, rig.profile[site]);
       rig.group.rotation.set(frame.rootX, frame.rootY, 0);
       rig.group.position.fromArray(frame.hip).sub(rig.rest.hips.clone().applyQuaternion(rig.group.quaternion));
-      rig.pose({ ...frame, breath: .8, lookPitch: time === 0 ? gaze.pitch : 0, lookYaw: time === 0 ? gaze.yaw : 0, giggle: time === 0 ? .8 : 0 });
+      rig.pose({ ...frame, breath: .8, lookPitch: time === 0 ? gaze.pitch : 0, lookYaw: time === 0 ? gaze.yaw : 0, giggle: time === 0 ? .8 : 0, sway: time === 0 ? .012 : 0, headTilt: time === 0 ? .05 : 0, shoulders: time === 0 ? .035 : 0 });
       rig.group.updateMatrixWorld(true); rig.skeleton.update();
       assert.ok(ringCenter(0).distanceTo(sensor.getWorldPosition(new THREE.Vector3())) < 1e-5);
       assert.ok(ringCenter(48).distanceTo(end.getWorldPosition(new THREE.Vector3())) < 1e-5);

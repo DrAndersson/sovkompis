@@ -1,25 +1,26 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createAvatarRig } from './rig-3d.js?v=20261010-motion';
-import { createEquipment, createBedroom, attachmentFor } from './equipment-3d.js?v=20261010-motion';
-import { BEDTIME_DURATION, REACTION_DURATION, bedtimeFrame, reactionFrame, gazeFor } from './motion-3d.js?v=20261010-motion';
-import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261010-motion';
-import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261010-motion';
-import { equipmentSVG } from './avatar.js?v=20261010-motion';
+import { createAvatarRig } from './rig-3d.js?v=20261011-skin';
+import { createEquipment, createBedroom, attachmentFor } from './equipment-3d.js?v=20261011-skin';
+import { BEDTIME_DURATION, REACTION_DURATION, bedtimeFrame, reactionFrame, gazeFor, idleFrame } from './motion-3d.js?v=20261011-skin';
+import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261011-skin';
+import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261011-skin';
+import { equipmentSVG } from './avatar.js?v=20261011-skin';
 
 const $ = selector => document.querySelector(selector);
 const STORAGE_KEY = 'sovkompis-demo3d-v1';
 const modelNames = { boy: 'Din sovkompis · Pojke', girl: 'Din sovkompis · Flicka' };
 const palettes = {
   hair: [['Brunt', '#594238'], ['Svart', '#292733'], ['Blont', '#d9b86b'], ['Koppar', '#af5936'], ['Rosa', '#d88cb1'], ['Lila', '#8d79b5']],
+  skin: [['Ljus', '#f5d5bd'], ['Ljusbeige', '#e8b693'], ['Varmbeige', '#cc956d'], ['Mellanbrun', '#a96f4c'], ['Brun', '#7c4d34'], ['Mörkbrun', '#503021']],
   clothes: [['Salvia', '#7fa99b'], ['Blått', '#6f9fd3'], ['Rosa', '#d99fab'], ['Lila', '#a58bc9'], ['Gult', '#e2bd67'], ['Korall', '#da8774']],
 };
-const state = { model: 'boy', boy: { hair: null, clothes: null, hairstyle: 'original' }, girl: { hair: null, clothes: null, hairstyle: 'original' } };
+const state = { model: 'boy', boy: { hair: null, clothes: null, skin: null, hairstyle: 'original' }, girl: { hair: null, clothes: null, skin: null, hairstyle: 'original' } };
 try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
   if (['boy', 'girl'].includes(saved?.model)) state.model = saved.model;
-  for (const model of ['boy', 'girl']) for (const part of ['hair', 'clothes']) {
+  for (const model of ['boy', 'girl']) for (const part of ['hair', 'clothes', 'skin']) {
     if (/^#[\da-f]{6}$/i.test(saved?.[model]?.[part])) state[model][part] = saved[model][part];
   }
   for (const model of ['boy', 'girl']) state[model].stars = saved?.[model]?.stars === true;
@@ -41,8 +42,8 @@ let lookFocus = null, focusUntil = 0, reaction = null, reactionTimer, lastPoseTi
 const gaze = { pitch: 0, yaw: 0 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const uniforms = {
-  hairTint: { value: new THREE.Color() }, clothesTint: { value: new THREE.Color() },
-  hairAmount: { value: 0 }, clothesAmount: { value: 0 }, maskPreview: { value: 0 }, starsAmount: { value: 0 },
+  hairTint: { value: new THREE.Color() }, clothesTint: { value: new THREE.Color() }, skinTint: { value: new THREE.Color() }, skinBase: { value: new THREE.Color() },
+  skinAmount: { value: 0 }, hairAmount: { value: 0 }, clothesAmount: { value: 0 }, maskPreview: { value: 0 }, starsAmount: { value: 0 },
   sleepAmount: { value: 0 }, eyeCenter: { value: new THREE.Vector3() }, eyeSize: { value: new THREE.Vector2() }, lidColor: { value: new THREE.Color() },
 };
 let renderer, scene, camera, controls, currentModel, loadVersion = 0;
@@ -68,11 +69,11 @@ function syncColors() {
   reward.setAttribute('aria-pressed', String(Boolean(uniforms.starsAmount.value)));
   reward.textContent = progress.rounds >= 3 ? '✦ Din stjärnpyjamas' : `☆ Stjärnpyjamas · ${progress.rounds}/3 övningar`;
 
-  for (const part of ['hair', 'clothes']) {
-    const color = state[state.model][part];
+  for (const part of ['hair', 'clothes', 'skin']) {
+    const color = state[state.model][part], fallback = part === 'skin' ? APPEARANCE[state.model].skinBase : palettes[part][0][1];
     uniforms[`${part}Amount`].value = color ? 1 : 0;
-    uniforms[`${part}Tint`].value.set(color || palettes[part][0][1]);
-    $(`#${part}-color`).value = color || palettes[part][0][1];
+    uniforms[`${part}Tint`].value.set(color || fallback);
+    $(`#${part}-color`).value = color || fallback;
     document.querySelectorAll(`[data-part="${part}"]`).forEach(button => {
       const active = button.dataset.color === color;
       button.classList.toggle('active', active);
@@ -80,6 +81,13 @@ function syncColors() {
       button.textContent = active ? '✓' : '';
     });
   }
+  uniforms.skinBase.value.set(APPEARANCE[state.model].skinBase);
+  uniforms.lidColor.value.set(APPEARANCE[state.model].skin);
+  if (state[state.model].skin) {
+    const base = uniforms.skinBase.value, tint = uniforms.skinTint.value, lid = uniforms.lidColor.value;
+    lid.setRGB(tint.r * lid.r / base.r, tint.g * lid.g / base.g, tint.b * lid.b / base.b);
+  }
+  appearance?.setSkinColor(state[state.model].skin, Boolean(uniforms.maskPreview.value));
   appearance?.setColor(state[state.model].hair, Boolean(uniforms.maskPreview.value));
   render();
 }
@@ -100,7 +108,7 @@ for (const [part, palette] of Object.entries(palettes)) {
     const button = document.createElement('button');
     button.type = 'button'; button.dataset.part = part; button.dataset.color = color;
     button.style.setProperty('--swatch', color);
-    button.setAttribute('aria-label', `${part === 'hair' ? 'Hårfärg' : 'Klädfärg'}: ${name}`);
+    button.setAttribute('aria-label', `${{ hair: 'Hårfärg', clothes: 'Klädfärg', skin: 'Hudfärg' }[part]}: ${name}`);
     button.setAttribute('aria-pressed', 'false'); button.title = name;
     button.addEventListener('click', () => setColor(part, color));
     $(`#${part}-swatches`).append(button);
@@ -108,7 +116,7 @@ for (const [part, palette] of Object.entries(palettes)) {
   $(`#${part}-color`).addEventListener('input', event => setColor(part, event.target.value));
 }
 $('#reset-colors').addEventListener('click', () => {
-  Object.assign(state[state.model], { hair: null, clothes: null, stars: false }); syncColors(); save();
+  Object.assign(state[state.model], { hair: null, clothes: null, skin: null, stars: false }); syncColors(); save();
 });
 $('#show-masks').addEventListener('change', event => { uniforms.maskPreview.value = Number(event.target.checked); syncColors(); });
 
@@ -119,13 +127,13 @@ function maskedMaterial(original) {
   const material = new THREE.MeshStandardMaterial({ map: original.map, roughness: .88, metalness: 0 });
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = 'attribute vec2 regionMask; attribute vec3 facePosition; varying vec2 vRegionMask; varying vec3 vAvatarPosition; varying vec3 vFacePosition;\n' + shader.vertexShader;
+    shader.vertexShader = 'attribute vec3 regionMask; attribute vec3 facePosition; varying vec3 vRegionMask; varying vec3 vAvatarPosition; varying vec3 vFacePosition;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegionMask = regionMask; vAvatarPosition = position; vFacePosition = facePosition;');
-    shader.fragmentShader = `varying vec2 vRegionMask; varying vec3 vAvatarPosition;
+    shader.fragmentShader = `varying vec3 vRegionMask; varying vec3 vAvatarPosition;
       varying vec3 vFacePosition; uniform float sleepAmount; uniform vec3 eyeCenter; uniform vec2 eyeSize; uniform vec3 lidColor;
       uniform float starsAmount;
-      uniform vec3 hairTint; uniform vec3 clothesTint;
-      uniform float hairAmount; uniform float clothesAmount; uniform float maskPreview;
+      uniform vec3 hairTint; uniform vec3 clothesTint; uniform vec3 skinTint; uniform vec3 skinBase;
+      uniform float skinAmount; uniform float hairAmount; uniform float clothesAmount; uniform float maskPreview;
     ` + shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
       #include <map_fragment>
@@ -137,6 +145,13 @@ function maskedMaterial(original) {
       vec3 newClothes = clothesTint * clamp(luminance / .5, .12, 1.5);
       diffuseColor.rgb = mix(originalColor, newHair, hair * hairAmount);
       diffuseColor.rgb = mix(diffuseColor.rgb, newClothes, clothes * clothesAmount);
+      // The skin geometry mask excludes separate facial details. On the girl's
+      // shared head texture, protect pale sclera/teeth, dark eyes and pink lips.
+      float warmth = (originalColor.r - originalColor.b) / max(originalColor.r, .001);
+      float skinTexture = smoothstep(.27, .45, warmth) * smoothstep(.20, .32, originalColor.g / max(originalColor.r, .001)) * smoothstep(.06, .15, luminance);
+      float skin = smoothstep(.2, .8, vRegionMask.z) * (1.0 - hair) * (1.0 - clothes) * skinTexture;
+      vec3 newSkin = skinTint * clamp(originalColor / skinBase, vec3(.12), vec3(1.8));
+      diffuseColor.rgb = mix(diffuseColor.rgb, newSkin, skin * skinAmount);
       vec2 cell = fract(vAvatarPosition.xy * 8.0) - .5;
       float radius = .14 + .09 * cos(atan(cell.y, cell.x) * 5.0);
       float star = 1.0 - smoothstep(radius - .02, radius, length(cell));
@@ -146,10 +161,11 @@ function maskedMaterial(original) {
       diffuseColor.rgb = mix(diffuseColor.rgb, lidColor * (1.0 + .07 * eyeDistance.y), lid * sleepAmount);
       vec3 preview = mix(vec3(.32), vec3(.8, .1, .7), hair);
       preview = mix(preview, vec3(.05, .7, .75), clothes);
+      preview = mix(preview, vec3(.93, .65, .22), skin);
       diffuseColor.rgb = mix(diffuseColor.rgb, preview, maskPreview);
     `);
   };
-  material.customProgramCacheKey = () => 'sovkompis-region-mask-rig-v3-eyelids';
+  material.customProgramCacheKey = () => 'sovkompis-region-mask-rig-v4-skin';
   return material;
 }
 function disposeModel(model) {
@@ -202,11 +218,11 @@ async function loadModel(name) {
   // if its companion mask request fails or another model supersedes this load.
   const results = await Promise.allSettled([
     loader.loadAsync(`./models/${name}.glb`),
-    fetch(`./models/${name}-mask.bin`).then(response => {
+    fetch(`./models/${name}-mask-v2.bin?v=20261011-skin`).then(response => {
       if (!response.ok) throw new Error('Mask download failed');
       return response.arrayBuffer();
     }),
-    fetch(`./models/${name}-mask.json`).then(response => {
+    fetch(`./models/${name}-mask-v2.json?v=20261011-skin`).then(response => {
       if (!response.ok) throw new Error('Mask metadata unavailable');
       return response.json();
     }),
@@ -217,15 +233,15 @@ async function loadModel(name) {
     if (!gltf || results[1].status !== 'fulfilled' || results[2].status !== 'fulfilled') throw new Error('Model or mask unavailable');
     const mask = new Float32Array(results[1].value);
     const meshes = []; gltf.scene.traverse(object => { if (object.isMesh) meshes.push(object); });
-    if (meshes.length !== 1 || mask.length !== meshes[0].geometry.attributes.position.count * 2) throw new Error('Mask does not match model');
+    if (meshes.length !== 1 || mask.length !== meshes[0].geometry.attributes.position.count * 3) throw new Error('Mask does not match model');
     const mesh = meshes[0];
     const metadata = results[2].value;
-    if (metadata.vertexCount !== mask.length / 2) throw new Error('Mask metadata does not match model');
+    if (metadata.version !== 2 || metadata.vertexCount !== mask.length / 3) throw new Error('Mask metadata does not match model');
     const excluded = new Set(metadata.excludedTriangles);
     mesh.geometry.setIndex(Array.from(mesh.geometry.index.array).filter((_, index) => !excluded.has(Math.floor(index / 3))));
     mesh.geometry.boundingBox = new THREE.Box3(new THREE.Vector3().fromArray(metadata.visibleBounds.min), new THREE.Vector3().fromArray(metadata.visibleBounds.max));
     mesh.geometry.boundingSphere = mesh.geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
-    mesh.geometry.setAttribute('regionMask', new THREE.BufferAttribute(mask, 2));
+    mesh.geometry.setAttribute('regionMask', new THREE.BufferAttribute(mask, 3));
     prepareAppearance(mesh.geometry);
     const old = mesh.material; mesh.material = maskedMaterial(old); old.dispose();
     mesh.castShadow = true; mesh.receiveShadow = true;
@@ -242,7 +258,7 @@ async function loadModel(name) {
     skeletonHelper.visible = $('#show-rig').checked; scene.add(skeletonHelper);
     rig.pose(); resetView();
     const triangles = (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3;
-    $('#model-stats').textContent = `${triangles.toLocaleString('sv-SE')} trianglar · 15 ben · separata hår- och klädmasker.`;
+    $('#model-stats').textContent = `${triangles.toLocaleString('sv-SE')} trianglar · 15 ben · separata hår-, hud- och klädmasker.`;
     $('#load-state').hidden = true; host.setAttribute('aria-busy', 'false'); $('#start-practice').disabled = false; render();
   } catch (error) {
     disposeModel(gltf?.scene);
@@ -286,10 +302,13 @@ function lookAtPart(id, site = progress.oximeterSite, duration = Infinity) {
   lookFocus = attachmentFor(rig, id, site).point;
   focusUntil = performance.now() + duration; render();
 }
-function chuckle(id, site) {
-  reaction = { started: performance.now() }; lookAtPart(id, site, REACTION_DURATION + 350);
-  clearTimeout(reactionTimer);
-  reactionTimer = setTimeout(() => { reaction = null; render(); }, REACTION_DURATION);
+function reactToPlacement(id, site) {
+  clearTimeout(reactionTimer); reaction = null;
+  lookAtPart(id, site, REACTION_DURATION + 350);
+  if (id === 'cannula') {
+    reaction = { started: performance.now() };
+    reactionTimer = setTimeout(() => { reaction = null; render(); }, REACTION_DURATION);
+  }
 }
 function updateAnimation(now) {
   if (!rig) return;
@@ -299,7 +318,9 @@ function updateAnimation(now) {
   const frame = bedtimeFrame(t, rig.rest.hips.toArray());
   const elapsed = Math.min(.05, Math.max(0, (now - lastPoseTime) / 1000)); lastPoseTime = now;
   if (now > focusUntil) lookFocus = null;
-  const target = !sleeping && lookFocus ? gazeFor(rig.profile, lookFocus) : { pitch: 0, yaw: 0 };
+  const idle = !sleeping && !reducedMotion.matches ? idleFrame(now, state.model === 'girl' ? 7 : 0) : { pitch: 0, yaw: 0, headTilt: 0, sway: 0, shoulders: 0, blink: 0 };
+  const target = !sleeping && lookFocus ? gazeFor(rig.profile, lookFocus) : idle;
+  const idleAmount = selected || reaction || waveStarted ? .15 : 1;
   for (const axis of ['pitch', 'yaw']) gaze[axis] = reducedMotion.matches ? 0 : THREE.MathUtils.damp(gaze[axis], target[axis], 9, elapsed);
   const laugh = reaction && !sleeping ? reactionFrame(now - reaction.started) : { giggle: 0, eyes: 0, active: false };
   const waveTime = waveStarted ? (now - waveStarted) / 1900 : 0;
@@ -308,8 +329,8 @@ function updateAnimation(now) {
   rig.group.rotation.set(frame.rootX, frame.rootY, 0);
   // Preserve the pelvis anchor while the spine, knees and arms move independently.
   rig.group.position.fromArray(frame.hip).sub(rig.rest.hips.clone().applyQuaternion(rig.group.quaternion));
-  rig.pose({ ...frame, breath: reducedMotion.matches ? 0 : Math.sin(now / (sleeping ? 1100 : 1550)) * (sleeping ? 1 : .6), greet, lookPitch: gaze.pitch, lookYaw: gaze.yaw, giggle: reducedMotion.matches ? 0 : laugh.giggle });
-  const eyesClosed = sleeping ? frame.eyes : reducedMotion.matches ? 0 : laugh.eyes;
+  rig.pose({ ...frame, breath: reducedMotion.matches ? 0 : Math.sin(now / (sleeping ? 1100 : 1550)) * (sleeping ? 1 : .6), greet, sway: idle.sway * idleAmount, headTilt: idle.headTilt * idleAmount, shoulders: idle.shoulders * idleAmount, lookPitch: gaze.pitch, lookYaw: gaze.yaw, giggle: reducedMotion.matches ? 0 : laugh.giggle });
+  const eyesClosed = sleeping ? frame.eyes : reducedMotion.matches ? 0 : Math.max(laugh.eyes, idle.blink);
   uniforms.sleepAmount.value = eyesClosed; appearance?.setSleep(eyesClosed);
   ambientLight.intensity = THREE.MathUtils.lerp(2.2, .72, frame.dim);
   keyLight.intensity = THREE.MathUtils.lerp(2.6, .95, frame.dim);
@@ -432,7 +453,7 @@ function placePart(target) {
     feedback = 'Nästan! Prova en annan plats. Du kan trycka på ”Visa mig var” om du vill ha hjälp.'; feedbackKind = 'retry'; updateCoach(); announce(feedback); return;
   }
   if (result.site) { progress.oximeterSite = result.site; saveProgress(storage, progress); }
-  equipment.place(selected, progress.oximeterSite); chuckle(selected, progress.oximeterSite);
+  equipment.place(selected, progress.oximeterSite); reactToPlacement(selected, progress.oximeterSite);
   placed = result.placed; feedback = item.success; feedbackKind = 'correct'; selected = null; hinted = false;
   rebuildTargets(); updateInventory(); updateCoach();
   announce(`${feedback} Plus ${XP_PER_PART} XP. ${placed.length} av ${EQUIPMENT.length} delar på plats.`);
