@@ -56,7 +56,7 @@ const uniforms = {
   skinAmount: { value: 0 }, hairAmount: { value: 0 }, clothesAmount: { value: 0 }, maskPreview: { value: 0 }, starsAmount: { value: 0 },
   sleepAmount: { value: 0 }, eyeCenter: { value: new THREE.Vector3() }, eyeSize: { value: new THREE.Vector2() }, lidColor: { value: new THREE.Color() },
 };
-let renderer, scene, camera, controls, currentModel, loadVersion = 0;
+let renderer, scene, camera, controls, currentModel, loadVersion = 0, hairSelectionVersion = 0;
 const host = $('#three-container');
 const loader = new GLTFLoader();
 let renderQueued = false;
@@ -102,13 +102,14 @@ function syncColors() {
   render();
 }
 function syncHairstyle() {
+  const request = ++hairSelectionVersion;
   const style = state[state.model].hairstyle;
   document.querySelectorAll('[data-hairstyle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.hairstyle === style)));
   if (appearance) {
     const active = appearance;
     $('#hair-status').textContent = style === 'none' ? '' : 'Laddar frisyren…';
     active.setStyle(style).then(ok => {
-      if (appearance !== active || state[state.model].hairstyle !== style) return;
+      if (request !== hairSelectionVersion || appearance !== active || state[state.model].hairstyle !== style) return;
       $('#hair-status').textContent = ok ? '' : 'Frisyren kunde inte laddas. Tryck på den för att försöka igen.';
       render();
     });
