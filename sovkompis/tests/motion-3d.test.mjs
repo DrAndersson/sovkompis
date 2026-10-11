@@ -47,3 +47,12 @@ test('Idle animation stays subtle and periodically blinks with resting intervals
     assert.ok(f.blink >= 0 && f.blink <= 1);
   }
 });
+
+test('Retry shakes the head both ways, stays small and settles exactly', async () => {
+  const { rejectionFrame, REJECTION_DURATION } = await import('../dist/motion-3d.js');
+  const frames = Array.from({ length: 101 }, (_, i) => rejectionFrame(i / 100 * REJECTION_DURATION));
+  assert.ok(frames.some(f => f.yaw > .15) && frames.some(f => f.yaw < -.15));
+  assert.ok(frames.every(f => Math.abs(f.yaw) <= .24));
+  assert.equal(frames[0].yaw, 0);
+  for (const elapsed of [-1, REJECTION_DURATION, REJECTION_DURATION + 500]) assert.deepEqual(rejectionFrame(elapsed), { yaw: 0, active: false });
+});

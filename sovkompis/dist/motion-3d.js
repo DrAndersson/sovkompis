@@ -58,3 +58,10 @@ export function idleFrame(milliseconds, offset = 0) {
     blink: Math.max(pulse(4.1, .30), pulse(10.3, .32), pulse(10.85, .27), pulse(20.1, .34)),
   };
 }
+
+export const REJECTION_DURATION = 850;
+// Two small side-to-side turns, starting and settling at the current gaze.
+export function rejectionFrame(elapsed) {
+  const t = clamp(elapsed / REJECTION_DURATION), active = elapsed >= 0 && elapsed < REJECTION_DURATION;
+  return { yaw: active ? .24 * Math.sin(t * Math.PI * 4) * Math.sin(t * Math.PI) : 0, active };
+}

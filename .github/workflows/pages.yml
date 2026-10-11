@@ -29,8 +29,8 @@ jobs:
         working-directory: sovkompis
         run: |
           node --check dist/app.js
-          node --check dist/avatar.js
-          node --check dist/demo-3d.js
+          node --check dist/equipment-icons.js
+          node --check dist/placement-audio.js
           node --check dist/rig-3d.js
           node --check dist/appearance-3d.js
           node --check dist/motion-3d.js

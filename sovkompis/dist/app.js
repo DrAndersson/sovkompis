@@ -1,198 +1,646 @@
-import { DEFAULT_AVATAR, EQUIPMENT, XP_PER_PART, COMPLETION_BONUS, ROUND_XP, availableTargets, SKIN_COLORS, HAIR_COLORS, OUTFIT_COLORS, loadProgress, saveProgress, placeEquipment, completeRound, targetFor } from './model.js?v=20261010-motion';
-import { avatarSVG, equipmentSVG } from './avatar.js?v=20261010-motion';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createAvatarRig } from './rig-3d.js?v=20261011-companion';
+import { createEquipment, createBedroom, attachmentFor } from './equipment-3d.js?v=20261011-companion';
+import { BEDTIME_DURATION, REACTION_DURATION, bedtimeFrame, reactionFrame, gazeFor, idleFrame, rejectionFrame, REJECTION_DURATION } from './motion-3d.js?v=20261011-companion';
+import { HAIRSTYLES, APPEARANCE, prepareAppearance, createAppearance } from './appearance-3d.js?v=20261011-companion';
+import { EQUIPMENT, XP_PER_PART, ROUND_XP, loadProgress, saveProgress, placeEquipment, completeRound, availableTargets } from './model.js?v=20261011-companion';
+import { equipmentSVG } from './equipment-icons.js?v=20261011-companion';
+
+import { createPlacementAudio } from './placement-audio.js?v=20261011-companion';
+
+const $ = selector => document.querySelector(selector);
+// Keep the historical key so existing 3D appearances survive the new main flow.
+const STORAGE_KEY = 'sovkompis-demo3d-v1';
+const modelNames = { boy: 'Din sovkompis · Pojke', girl: 'Din sovkompis · Flicka' };
+const palettes = {
+  hair: [['Brunt', '#594238'], ['Svart', '#292733'], ['Blont', '#d9b86b'], ['Koppar', '#af5936'], ['Rosa', '#d88cb1'], ['Lila', '#8d79b5']],
+  skin: [['Ljus', '#f5d5bd'], ['Ljusbeige', '#e8b693'], ['Varmbeige', '#cc956d'], ['Mellanbrun', '#a96f4c'], ['Brun', '#7c4d34'], ['Mörkbrun', '#503021']],
+  clothes: [['Salvia', '#7fa99b'], ['Blått', '#6f9fd3'], ['Rosa', '#d99fab'], ['Lila', '#a58bc9'], ['Gult', '#e2bd67'], ['Korall', '#da8774']],
+};
+const state = { sound: true, model: 'boy', boy: { hair: null, clothes: null, skin: null, hairstyle: 'original' }, girl: { hair: null, clothes: null, skin: null, hairstyle: 'original' } };
+try {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  state.sound = saved?.sound !== false;
+  if (['boy', 'girl'].includes(saved?.model)) state.model = saved.model;
+  for (const model of ['boy', 'girl']) for (const part of ['hair', 'clothes', 'skin']) {
+    if (/^#[\da-f]{6}$/i.test(saved?.[model]?.[part])) state[model][part] = saved[model][part];
+  }
+  for (const model of ['boy', 'girl']) state[model].stars = saved?.[model]?.stars === true;
+  for (const model of ['boy', 'girl']) if (HAIRSTYLES.some(([id]) => id === saved?.[model]?.hairstyle)) state[model].hairstyle = saved[model].hairstyle;
+} catch { /* Storage is optional; the app works without it. */ }
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch { $('#save-note').textContent = 'Du kan prova färger här, men webbläsaren kan inte spara dem.'; }
+}
 
 let storage;
-try { storage = window.localStorage; } catch { storage = null; }
+try { storage = localStorage; } catch { storage = null; }
 let progress = loadProgress(storage);
-let screen = location.hash === '#avatar' ? 'avatar' : 'welcome', tab = 'hair', placed = [], selected = null, feedback = '', feedbackKind = '', roundCounted = false, showHint = false, reading = false, drag = null, storageWarning = false;
-const app = document.querySelector('#app');
-const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const iconPaths = {
- moon: '<path d="M20.3 14.1A8.8 8.8 0 0 1 9.9 3.7a8.8 8.8 0 1 0 10.4 10.4Z"/>',
- star: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.9-5.4 2.9 1-6-4.4-4.3 6.1-.9Z"/>',
- arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
- back: '<path d="M19 12H5m5-5-5 5 5 5"/>',
- sound: '<path d="m11 5-6 4H2v6h3l6 4ZM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
- check: '<path d="m5 12 4 4L19 6"/>',
- heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
- help: '<circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4m.1 3h.01"/>',
- spark: '<path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5Z"/>',
- person: '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
- hand: '<path d="M8 13V5a2 2 0 0 1 4 0v6-7a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v9a7 7 0 0 1-12 5l-5-6a2 2 0 0 1 3-3l2 2"/>',
- lock: '<rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>',
- gift: '<path d="M3 8h18v5H3zm2 5v8h14v-8M12 8v13"/><path d="M12 8H8a3 3 0 1 1 3-3Zm0 0h4a3 3 0 1 0-3-3Z"/>',
- refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 6a8 8 0 0 1 13 3M5 15a8 8 0 0 0 13 3"/>',
- close: '<path d="m6 6 12 12M18 6 6 18"/>',
- leaf: '<path d="M20 3C8 2 2 8 5 16c8 4 14-1 15-13ZM4 21 15 9"/>',
- eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
- shirt: '<path d="m8 3-6 4 3 6 3-2v10h8V11l3 2 3-6-6-4a4 4 0 0 1-8 0Z"/>',
- hair: '<path d="M5 14C0 5 8 1 12 4c7-4 13 4 7 10M5 12v7m14-7v7M6 10c4 1 6-2 7-4 1 3 3 4 6 4"/>',
- volumeoff: '<path d="m11 5-6 4H2v6h3l6 4Zm6 4 5 6m0-6-5 6"/>',
+let stage = location.hash === '#avatar' ? 'customize' : 'welcome', rig, equipment, appearance, skeletonHelper, bedroom, floor;
+let ambientLight, keyLight, fillLight;
+let placed = [], selected = null, counted = false, hinted = false, feedback = '', feedbackKind = '';
+let rejectionStarted = null;
+let sleepStarted = 0, waveStarted = 0, lastAnimationFrame = 0;
+let lookFocus = null, focusUntil = 0, reaction = null, reactionTimer, lastPoseTime = 0;
+const gaze = { pitch: 0, yaw: 0 };
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const uniforms = {
+  hairTint: { value: new THREE.Color() }, clothesTint: { value: new THREE.Color() }, skinTint: { value: new THREE.Color() }, skinBase: { value: new THREE.Color() },
+  skinAmount: { value: 0 }, hairAmount: { value: 0 }, clothesAmount: { value: 0 }, maskPreview: { value: 0 }, starsAmount: { value: 0 },
+  sleepAmount: { value: 0 }, eyeCenter: { value: new THREE.Vector3() }, eyeSize: { value: new THREE.Vector2() }, lidColor: { value: new THREE.Color() },
 };
-const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.spark}</svg>`;
-const currentItem = () => EQUIPMENT.find(e => e.id === selected);
-const save = () => { storageWarning = !saveProgress(storage, progress); };
-function announce(text) { document.querySelector('#announcer').textContent = ''; requestAnimationFrame(() => document.querySelector('#announcer').textContent = text); }
-function go(next) {
-  window.speechSynthesis?.cancel(); reading = false;
-  screen = next; render();
-  document.querySelector('h1')?.focus({ preventScroll: true });
-  window.scrollTo({ top: 0, behavior: 'instant' });
-}
-function header() {
- const step = screen === 'welcome' ? 1 : screen === 'avatar' ? 2 : 3;
- return `<header class="header"><button class="brand" data-action="home" aria-label="Sovkompis, till välkomstsidan"><span class="brand-icon">${icon('moon')}</span>Sovkompis<span class="brand-dot">✦</span></button>
- <nav class="step-nav" aria-label="Din resa">${['Välkommen', 'Din sovkompis', 'Öva tillsammans'].map((s, i) => `<button data-action="nav" data-step="${i + 1}" class="step ${step === i + 1 ? 'current' : ''} ${step > i + 1 ? 'done' : ''}" ${step === i + 1 ? 'aria-current="step"' : ''} ${i === 2 && step < 3 ? 'disabled' : ''}><span class="step-number">${step > i + 1 ? icon('check') : i + 1}</span><span>${s}</span></button>${i < 2 ? '<span class="step-line"></span>' : ''}`).join('')}</nav>
- <div class="header-end"><span class="xp-pill" title="Erfarenhetspoäng">${icon('star')} <b>${progress.xp + (!roundCounted && screen === 'practice' ? placed.length * XP_PER_PART : 0)}</b> XP</span><button class="icon-button help-button" data-action="help" aria-label="Hjälp">${icon('help')}</button></div></header>`;
-}
-function footer() {
- return `<footer class="footer"><span>${icon('heart')} En liten övning för en tryggare natt.</span><button data-action="about">Om övningen</button><span class="local-note">${storageWarning ? 'Framsteg kan inte sparas i den här webbläsaren.' : 'Din sovkompis sparas bara i din webbläsare.'}</span></footer>`;
-}
-function listenButton() { return `<button class="text-button listen" data-action="listen" aria-pressed="${reading}">${icon(reading ? 'volumeoff' : 'sound')} ${reading ? 'Sluta lyssna' : 'Lyssna'}</button>`; }
-function welcome() {
- return `<main id="main" class="welcome-main"><section class="welcome-hero"><div class="welcome-copy"><div class="eyebrow"><span class="tiny-dot"></span> INFÖR DIN ANDNINGSREGISTRERING</div><h1 tabindex="-1">Hej och välkommen<br>till <span class="serif-em">Sovkompis.</span></h1><p class="intro">En ny upplevelse känns ofta lättare<br class="desktop-break"> när man har fått prova först.</p><p class="welcome-description">Här får du skapa en egen kompis och lära känna delarna du ska ha på dig när du sover. Vi tar det tillsammans, en liten bit i taget.</p><div class="hero-actions"><button class="button primary large" data-action="create">${progress.rounds ? 'Träffa din sovkompis' : 'Skapa din sovkompis'} ${icon('arrow')}</button>${listenButton()}</div><div class="calm-note">${icon('leaf')} I din takt. Inga tidtagare. Du får prova igen.</div></div>
- <div class="welcome-art"><div class="scene-orbit orbit-one"></div><div class="scene-orbit orbit-two"></div><div class="moon-decoration">${icon('moon')}</div><span class="scene-star star-one">✦</span><span class="scene-star star-two">✧</span><span class="scene-star star-three">✦</span><div class="cloud cloud-one"></div><div class="cloud cloud-two"></div><div class="hello-bubble">Hej! Ska vi öva ihop? <span>✧</span></div><div class="welcome-avatar">${avatarSVG(progress.avatar, { id: 'welcome' })}</div><div class="platform"></div><div class="art-badge"><span class="badge-heart">${icon('heart')}</span><div>Din egen sovkompis<small>Redo för ett litet äventyr</small></div></div><div class="tiny-flower">✳</div></div></section>
- <section class="journey-section" aria-labelledby="journey-title"><div class="section-heading"><h2 id="journey-title">Tre små steg. Lite tryggare.</h2><span>Det här gör vi tillsammans</span></div><div class="journey-cards"><article class="journey-card"><span class="journey-icon peach">${icon('person')}</span><div><span class="card-overline">01 · SKAPA</span><h3>En kompis som är du</h3><p>Välj hår, ögon och dina favoritkläder.</p></div></article><article class="journey-card"><span class="journey-icon sage">${icon('hand')}</span><div><span class="card-overline">02 · UPPTÄCK</span><h3>Prova alla delarna</h3><p>Dra dem till din kompis och lär dig mer.</p></div></article><article class="journey-card"><span class="journey-icon lavender">${icon('moon')}</span><div><span class="card-overline">03 · FIRA</span><h3>Redo för en god natt</h3><p>Samla stjärnor och lås upp något fint.</p></div></article></div></section>${progress.rounds ? `<div class="returning-note">${icon('star')} Du har redan övat ${progress.rounds} ${progress.rounds === 1 ? 'gång' : 'gånger'}. Vad fint att du är tillbaka!</div>` : ''}</main>`;
-}
-const swatches = (colors, field, labels) => `<div class="swatches">${colors.map((color, i) => `<button class="swatch ${progress.avatar[field] === color ? 'active' : ''}" style="--swatch:${color}" data-action="customize" data-field="${field}" data-value="${color}" aria-label="${labels[i]}" aria-pressed="${progress.avatar[field] === color}">${progress.avatar[field] === color ? icon('check') : ''}</button>`).join('')}</div>`;
-function customizeOptions() {
- if (tab === 'hair') return `<h3>Vilken frisyr känns som du?</h3><div class="option-grid hairstyles">${[['wave', 'Rufsigt'], ['short', 'Kort'], ['buns', 'Knuttar'], ['long', 'Långt hår'], ['bob', 'Page'], ['ponytail', 'Hästsvans'], ['none', 'Utan hår']].map(([value, name]) => `<button class="option-card ${progress.avatar.hair === value ? 'active' : ''}" data-action="customize" data-field="hair" data-value="${value}" aria-pressed="${progress.avatar.hair === value}"><span class="mini-head">${avatarSVG({ ...progress.avatar, hair: value }, { id: `hair-${value}` })}</span>${name}</button>`).join('')}</div><h3>Hårfärg</h3>${swatches(HAIR_COLORS, 'hairColor', ['Brunt', 'Svart', 'Koppar', 'Blont', 'Grått', 'Lila'])}`;
- if (tab === 'face') return `<h3>Ögon med personlighet</h3><div class="option-grid eyes-options">${[['round', 'Nyfikna', '● ●'], ['happy', 'Glada', '⌒ ⌒'], ['anime', 'Stora', '◕ ◕']].map(([value, label, glyph]) => `<button class="option-card ${progress.avatar.eyes === value ? 'active' : ''}" data-action="customize" data-field="eyes" data-value="${value}" aria-pressed="${progress.avatar.eyes === value}"><span class="eyes-glyph">${glyph}</span>${label}</button>`).join('')}</div><h3>Hudton</h3>${swatches(SKIN_COLORS, 'skin', ['Ljus', 'Ljus mellan', 'Mellan', 'Mörk mellan', 'Mörk'])}`;
- return `<h3>En favoritfärg att mysa i</h3>${swatches(OUTFIT_COLORS, 'outfit', ['Salviagrön', 'Himmelsblå', 'Rosa', 'Honungsgul', 'Lavendel'])}<button class="unlock-outfit ${progress.rounds >= 3 ? 'unlocked' : ''} ${progress.avatar.outfit === 'stars' ? 'active' : ''}" data-action="star-outfit" ${progress.rounds < 3 ? 'disabled' : ''} ${progress.rounds >= 3 ? `aria-pressed="${progress.avatar.outfit === 'stars'}"` : ''}><span class="reward-shirt">${icon('shirt')}<span>✦</span></span><div><strong>Stjärntröjan</strong><small>${progress.rounds >= 3 ? 'Din belöning! Tryck för att ta på den.' : `Öva 3 gånger för att låsa upp · ${progress.rounds}/3`}</small></div>${icon(progress.rounds >= 3 ? 'check' : 'lock')}</button><p class="soft-caption">En liten belöning för varje gång du vågar prova.</p>`;
-}
-function avatarPage() {
- return `<main id="main" class="inner-main"><div class="page-heading"><div><div class="eyebrow">STEG 2 · SKAPA DIN SOVKOMPIS</div><h1 tabindex="-1">En kompis på ditt sätt.</h1><p>Lite som du, eller någon helt ny. Du bestämmer.</p></div>${listenButton()}</div><section class="demo-entry" aria-label="Prova 3D-demo"><div><strong>Din sovkompis i 3D <small>NY DEMO</small></strong><p>Skapa en 3D-kompis, öva med delarna och säg god natt.</p></div><a href="./demo-3d.html">Öppna 3D-demon →</a></section><div class="builder-layout"><section class="customizer panel"><div class="tabs" role="tablist" aria-label="Ändra din sovkompis">${[['hair', 'Hår', 'hair'], ['face', 'Ansikte', 'eye'], ['clothes', 'Kläder', 'shirt']].map(([value, label, ico]) => `<button role="tab" id="tab-${value}" aria-controls="customize-panel" aria-selected="${tab === value}" tabindex="${tab === value ? 0 : -1}" class="${tab === value ? 'active' : ''}" data-action="tab" data-value="${value}">${icon(ico)}${label}</button>`).join('')}</div><div class="customizer-body" id="customize-panel" role="tabpanel" aria-labelledby="tab-${tab}">${customizeOptions()}</div><label class="name-field" for="avatar-name">Vad heter din sovkompis?<input id="avatar-name" maxlength="24" value="${escape(progress.avatar.name)}" placeholder="Ett namn du tycker om" autocomplete="off"></label></section>
- <section class="builder-preview" aria-label="Förhandsvisning av din sovkompis"><span class="preview-star">✧</span><div class="avatar-halo"></div><div class="builder-avatar">${avatarSVG(progress.avatar, { id: 'builder' })}</div><div class="avatar-name">${escape(progress.avatar.name)} <span>✦</span></div><span class="preview-caption">Precis lagom mycket du.</span></section>
- <aside class="builder-aside"><div class="small-spark">${icon('spark')}</div><h2>Vi gör det<br>tillsammans.</h2><p>Din sovkompis provar först. Sedan vet du lite mer om hur det kan kännas.</p><div class="reward-preview">${icon('gift')}<strong>En överraskning väntar</strong><p>Öva tre gånger och få en alldeles egen stjärntröja.</p><div class="round-dots">${[1, 2, 3].map(n => `<span class="${progress.rounds >= n ? 'filled' : ''}">${progress.rounds >= n ? icon('check') : n}</span>`).join('')}</div></div></aside></div><div class="bottom-actions"><button class="text-button" data-action="home">${icon('back')} Tillbaka</button><span>Du kan alltid ändra din kompis senare.</span><button class="button primary" data-action="start">Nu provar vi delarna ${icon('arrow')}</button></div></main>`;
-}
-function practicePage() {
- const item = currentItem();
- return `<main id="main" class="inner-main practice-main"><div class="page-heading"><div><div class="eyebrow">STEG 3 · ÖVA TILLSAMMANS</div><h1 tabindex="-1">En liten del i taget.</h1><p>Dra en del till din sovkompis. Du kan också trycka på delen och sedan på rätt plats.</p></div>${listenButton()}</div>
- <div class="practice-layout"><section class="equipment-panel panel" aria-labelledby="equipment-title"><div class="panel-title"><h2 id="equipment-title">Dina delar</h2><span>${placed.length} av ${EQUIPMENT.length}</span></div><p class="inventory-tip">Bläddra i listan för att se alla ${EQUIPMENT.length} delar.</p><div class="equipment-list">${EQUIPMENT.map((e, i) => `<button class="equipment-card ${selected === e.id ? 'selected' : ''} ${placed.includes(e.id) ? 'placed' : ''}" data-action="select" data-equipment="${e.id}" aria-pressed="${selected === e.id}" ${placed.includes(e.id) ? 'disabled' : ''}><span class="equipment-image">${equipmentSVG(e.id)}</span><span class="equipment-text"><strong>${e.name}</strong><small>${placed.includes(e.id) ? 'På plats!' : e.subtitle || 'Tryck eller dra'}</small></span><span class="equipment-number">${placed.includes(e.id) ? icon('check') : i + 1}</span></button>`).join('')}</div></section>
- <section class="practice-scene" aria-label="Placera utrustningen på din sovkompis"><div class="scene-top"><span class="scene-name">${escape(progress.avatar.name)}</span><span class="scene-tag">${icon('heart')} Vi övar ihop</span></div><div class="practice-halo"></div><div class="avatar-stage">${avatarSVG(progress.avatar, { id: 'practice', placed, site: progress.oximeterSite })}<div class="drop-targets">${availableTargets(placed, selected).map(e => { const t = targetFor(e, progress.oximeterSite); return `<button class="drop-target ${e.kind === 'ecg' ? 'ecg-target' : ''} ${showHint && selected === e.id ? 'hinted' : ''}" style="left:${t.x}%;top:${t.y}%" data-action="place" data-target="${e.targetId}" aria-label="Placera vald del vid ${e.id === 'oximeter' ? e.site === 'toe' ? 'tån' : 'fingret' : e.kind === 'ecg' ? `${e.short.toLowerCase()} på bröstkorgen` : e.short.toLowerCase()}" ${!selected ? 'disabled' : ''}><span>${e.kind === 'ecg' ? e.number : '+'}</span><span class="target-label">${e.id === 'oximeter' ? e.site === 'toe' ? 'Tå' : 'Finger' : e.short}</span></button>`; }).join('')}</div></div><p class="scene-bottom">${icon('hand')} ${item?.kind === 'ecg' ? 'Höger och vänster är din sovkompis sidor.' : selected ? 'Dra eller tryck på en plats på figuren' : 'Börja med att välja en del i listan'}</p></section>
- <aside class="coach-panel"><div class="practice-progress"><div><strong>Du är på väg!</strong><span>${placed.length}/${EQUIPMENT.length} delar</span></div><div class="progress-track"><span style="width:${placed.length / EQUIPMENT.length * 100}%"></span></div><p>Varje liten del ger +${XP_PER_PART} XP ${icon('star')}</p></div><div class="coach-card ${feedbackKind === 'correct' ? 'success' : ''}"><span class="coach-icon">${icon(feedbackKind === 'correct' ? 'check' : item ? 'hand' : 'spark')}</span><span class="card-overline">${feedbackKind === 'correct' ? 'FINT JOBBAT' : item ? 'LÄR KÄNNA DELEN' : 'VI BÖRJAR HÄR'}</span><h2>${feedbackKind === 'correct' ? 'Där satt den!' : item ? item.name : 'Vilken del vill du prova?'}</h2><p>${feedback || (item ? item.description : 'Du kan börja med vilken del du vill. Det finns ingen brådska.')}</p>${item && feedbackKind !== 'correct' ? `<div class="instruction">${item.id === 'oximeter' ? 'Sätt pulsoximetern på fingret eller tån. Båda går bra i övningen.' : item.instruction}</div><button class="text-button hint-button" data-action="hint">${icon('eye')} ${showHint ? 'Dölj ledtråd' : 'Visa mig var'}</button>` : ''}</div><div class="reassurance">${icon('leaf')} <p>${feedbackKind === 'retry' ? 'Ingen fara. Här får du prova hur många gånger du vill.' : 'Här går det bra att prova sig fram. Vi hjälper dig på vägen.'}</p></div></aside></div><div class="bottom-actions"><button class="text-button" data-action="create">${icon('back')} Ändra din kompis</button><span>Personalen visar hur utrustningen ska sitta på just dig.</span><button class="text-button" data-action="restart">${icon('refresh')} Börja om övningen</button></div></main>`;
-}
-function celebration() {
- const newlyUnlocked = progress.rounds === 3;
- return `<main id="main" class="celebration-main"><div class="confetti" aria-hidden="true">${Array.from({ length: 42 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--delay:${(i % 8) * -.27}s;--color:${['#a1bca7', '#e3bd79', '#b1a2c5', '#dba799'][i % 4]};--spin:${i * 43}deg"></i>`).join('')}</div><div class="celebration-medal">${icon('star')}<span>✦</span></div><div class="eyebrow">ALLA ${EQUIPMENT.length} DELAR ÄR PÅ PLATS</div><h1 tabindex="-1">Bravo, du klarade det!</h1><p>Du och ${escape(progress.avatar.name)} har lärt känna alla delarna.<br>Det får du vara stolt över.</p><div class="earned-xp">${icon('star')} +${ROUND_XP} XP <span>${EQUIPMENT.length * XP_PER_PART} för delarna + ${COMPLETION_BONUS} för hela övningen</span></div><div class="reward-card"><span class="reward-shirt">${icon('shirt')}<span>✦</span></span><div><span class="card-overline">${progress.rounds >= 3 ? 'DIN BELÖNING' : 'SNART ÄR DEN DIN'}</span><h2>${newlyUnlocked ? 'Du låste upp stjärntröjan!' : progress.rounds >= 3 ? 'Stjärntröjan är din!' : 'En tröja full av stjärnor'}</h2><p>${progress.rounds >= 3 ? 'Den finns nu bland din sovkompis kläder.' : `${3 - progress.rounds} ${3 - progress.rounds === 1 ? 'övning' : 'övningar'} kvar till din nya tröja.`}</p><div class="reward-progress">${[1, 2, 3].map(n => `<span class="${progress.rounds >= n ? 'filled' : ''}">${progress.rounds >= n ? icon('check') : icon('star')}</span>`).join('')}</div></div></div><div class="celebration-actions">${progress.rounds >= 3 && progress.avatar.outfit !== 'stars' ? `<button class="button secondary" data-action="wear-reward">${icon('shirt')} Ta på stjärntröjan</button>` : ''}<button class="button primary" data-action="sleep">Dags att sova ${icon('moon')}</button></div><button class="text-button repeat-button" data-action="replay">${icon('refresh')} Öva en gång till</button></main>`;
-}
-function sleepPage() {
- return `<main id="main" class="sleep-main"><div class="sleep-copy"><div class="eyebrow">EN LUGN AVSLUTNING</div><h1 tabindex="-1">God natt,<br><span class="serif-em">lilla sovkompis.</span></h1><p>Alla delarna sitter kvar medan din kompis somnar. Nu har ni övat tillsammans.</p><p class="sleep-message">När det är din tur finns personalen där för att hjälpa dig.</p><div class="sleep-actions"><button class="button primary" data-action="replay">${icon('refresh')} Öva en gång till</button><button class="text-button" data-action="home">Till startsidan ${icon('arrow')}</button></div><span class="sleep-stat">${icon('star')} ${progress.rounds} ${progress.rounds === 1 ? 'övning' : 'övningar'} klar${progress.rounds === 1 ? '' : 'a'} · ${progress.xp} XP samlade</span></div><div class="bedroom" role="img" aria-label="Din sovkompis sover sött med alla ${EQUIPMENT.length} delarna på sig"><div class="night-window"><span>✧</span>${icon('moon')}<span>✦</span></div><span class="night-spark night-spark-one">✧</span><span class="night-spark night-spark-two">✦</span><div class="bed-head"></div><div class="bed-mattress"></div><div class="bed-pillow"></div><div class="sleeping-avatar">${avatarSVG(progress.avatar, { id: 'sleep', sleeping: true, placed: EQUIPMENT.map(e => e.id), site: progress.oximeterSite })}</div><div class="bed-blanket"><span>✦</span><span>✧</span><span>✦</span></div><div class="bed-base"></div><div class="night-lamp"></div><div class="zzz"><span>z</span><span>z</span><span>z</span></div><div class="bedroom-caption">Sov gott. Du har gjort något fint idag.</div></div></main>`;
-}
+let renderer, scene, camera, controls, currentModel, loadVersion = 0;
+const host = $('#three-container');
+const loader = new GLTFLoader();
+let renderQueued = false;
 function render() {
- const inventoryScroll = document.querySelector('.equipment-list')?.scrollLeft || 0;
- const inventoryScrollTop = document.querySelector('.equipment-list')?.scrollTop || 0;
- const active = document.activeElement;
- const focusKey = active?.dataset?.action ? { action: active.dataset.action, value: active.dataset.value, field: active.dataset.field, equipment: active.dataset.equipment, target: active.dataset.target } : null;
- app.innerHTML = header() + ({ welcome, avatar: avatarPage, practice: practicePage, celebrate: celebration, sleep: sleepPage }[screen])() + footer();
- const inventory = document.querySelector('.equipment-list'); if (inventory) { inventory.scrollLeft = inventoryScroll; inventory.scrollTop = inventoryScrollTop; }
- if (focusKey) [...document.querySelectorAll('[data-action]')].find(el => Object.entries(focusKey).every(([key, value]) => el.dataset[key] === value))?.focus({ preventScroll: true });
+  if (!renderer || renderQueued || document.hidden) return;
+  renderQueued = true;
+  requestAnimationFrame(now => {
+    renderQueued = false;
+    if (document.hidden) return;
+    const moving = Boolean(rig);
+    if (!moving || now - lastAnimationFrame > 30 || reducedMotion.matches) {
+      updateAnimation(now); renderer.render(scene, camera); updateTargets(); lastAnimationFrame = now;
+    }
+    if (moving && !reducedMotion.matches) render();
+  });
 }
-function startRound(reset = false) {
- if (reset || roundCounted) { placed = []; selected = null; feedback = ''; feedbackKind = ''; roundCounted = false; showHint = false; }
- go('practice');
+function syncColors() {
+  uniforms.starsAmount.value = progress.rounds >= 3 && state[state.model].stars ? 1 : 0;
+  const reward = $('#star-pajamas'); reward.disabled = progress.rounds < 3;
+  reward.setAttribute('aria-pressed', String(Boolean(uniforms.starsAmount.value)));
+  reward.textContent = progress.rounds >= 3 ? '✦ Din stjärnpyjamas' : `☆ Stjärnpyjamas · ${progress.rounds}/3 övningar`;
+
+  for (const part of ['hair', 'clothes', 'skin']) {
+    const color = state[state.model][part], fallback = part === 'skin' ? APPEARANCE[state.model].skinBase : palettes[part][0][1];
+    uniforms[`${part}Amount`].value = color ? 1 : 0;
+    uniforms[`${part}Tint`].value.set(color || fallback);
+    $(`#${part}-color`).value = color || fallback;
+    document.querySelectorAll(`[data-part="${part}"]`).forEach(button => {
+      const active = button.dataset.color === color;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+      button.textContent = active ? '✓' : '';
+    });
+  }
+  uniforms.skinBase.value.set(APPEARANCE[state.model].skinBase);
+  uniforms.lidColor.value.set(APPEARANCE[state.model].skin);
+  if (state[state.model].skin) {
+    const base = uniforms.skinBase.value, tint = uniforms.skinTint.value, lid = uniforms.lidColor.value;
+    lid.setRGB(tint.r * lid.r / base.r, tint.g * lid.g / base.g, tint.b * lid.b / base.b);
+  }
+  appearance?.setSkinColor(state[state.model].skin, Boolean(uniforms.maskPreview.value));
+  appearance?.setColor(state[state.model].hair, Boolean(uniforms.maskPreview.value));
+  render();
 }
-function selectEquipment(id) {
- if (placed.includes(id)) return;
- selected = id; feedback = ''; feedbackKind = ''; showHint = false; render();
- announce(`${currentItem().name} vald. ${currentItem().id === 'oximeter' ? 'Placera den vid fingret eller tån.' : currentItem().instruction}`);
+function syncHairstyle() {
+  const style = state[state.model].hairstyle;
+  document.querySelectorAll('[data-hairstyle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.hairstyle === style)));
+  appearance?.setStyle(style); render();
 }
-function place(target) {
- if (!selected || roundCounted) return;
- const result = placeEquipment(placed, selected, target);
- if (!result.correct) {
-  feedbackKind = 'retry'; feedback = 'Nästan! Den här delen ska sitta på ett annat ställe. Prova igen eller ta en ledtråd.'; render(); announce(feedback); return;
- }
- if (result.site) { progress.oximeterSite = result.site; save(); }
- feedback = currentItem().success; feedbackKind = 'correct'; placed = result.placed; selected = null; showHint = false;
- announce(`${feedback} Plus ${XP_PER_PART} XP. ${placed.length} av ${EQUIPMENT.length} delar på plats.`);
- if (result.complete) {
-  roundCounted = true; progress = completeRound(progress); save(); go('celebrate');
-  announce(`Bravo! Alla ${EQUIPMENT.length} delar är på plats. Du har fått ${ROUND_XP} XP.${progress.rounds === 3 ? ' Du har låst upp stjärntröjan!' : ''}`);
- } else render();
+for (const [id, label] of HAIRSTYLES) {
+  const button = document.createElement('button'); button.type = 'button'; button.dataset.hairstyle = id;
+  button.textContent = label; button.setAttribute('aria-pressed', 'false');
+  button.onclick = () => { state[state.model].hairstyle = id; syncHairstyle(); save(); };
+  $('#hairstyles-3d').append(button);
 }
-function showDialog(kind) {
- const dialog = document.createElement('dialog'); dialog.className = 'info-dialog';
- const help = kind === 'help';
- dialog.innerHTML = `<button class="icon-button dialog-close" aria-label="Stäng">${icon('close')}</button><span class="dialog-symbol">${icon(help ? 'heart' : 'moon')}</span><h2>${help ? 'Vi tar det i din takt.' : 'Om Sovkompis'}</h2>${help ? '<p>Det finns ingen tidtagare och du förlorar inga poäng om du provar fel.</p><ol><li>Välj en del i listan.</li><li>Dra den till figuren, eller tryck först på delen och sedan på en plats.</li><li>Tryck på ”Visa mig var” om du vill ha en ledtråd.</li></ol><p>Du kan använda Tab för att flytta mellan knappar och Enter eller mellanslag för att välja.</p>' : '<p>Sovkompis är en prototyp för att lära känna utrustningen inför en andningsregistrering. Figuren och utrustningen är förenklade.</p><p>Följ alltid instruktionerna från din mottagning när det är dags att använda den riktiga utrustningen. Personalen hjälper till med koldioxidmätaren och visar exakt placering. EKG-kablarnas tre placeringar är förenklade och räknas från patientens håll.</p><p>Frisyr, kläder och färdiga övningar sparas bara i den här webbläsaren. Inget konto eller patientuppgifter behövs. Ett påhittat namn går bra.</p><p class="source-note">Information om koldioxidmätaren: <a href="https://www.sentec.com/product-support/tcm/" target="_blank" rel="noopener noreferrer">tillverkarens produktstöd</a>.</p>'}<button class="button primary dialog-done">${help ? 'Det känns bra' : 'Tillbaka till min sovkompis'} ${icon('check')}</button>`;
- app.append(dialog); dialog.showModal();
- const previous = document.activeElement;
- const close = () => dialog.close();
- dialog.querySelector('.dialog-close').onclick = close; dialog.querySelector('.dialog-done').onclick = close;
- dialog.addEventListener('click', e => { if (e.target === dialog) { const r = dialog.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) close(); } });
- dialog.addEventListener('close', () => { dialog.remove(); previous?.focus(); });
+function setColor(part, color) { state[state.model][part] = color; syncColors(); save(); }
+for (const [part, palette] of Object.entries(palettes)) {
+  for (const [name, color] of palette) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.dataset.part = part; button.dataset.color = color;
+    button.style.setProperty('--swatch', color);
+    button.setAttribute('aria-label', `${{ hair: 'Hårfärg', clothes: 'Klädfärg', skin: 'Hudfärg' }[part]}: ${name}`);
+    button.setAttribute('aria-pressed', 'false'); button.title = name;
+    button.addEventListener('click', () => setColor(part, color));
+    $(`#${part}-swatches`).append(button);
+  }
+  $(`#${part}-color`).addEventListener('input', event => setColor(part, event.target.value));
 }
+$('#reset-colors').addEventListener('click', () => {
+  Object.assign(state[state.model], { hair: null, clothes: null, skin: null, stars: false }); syncColors(); save();
+});
+$('#show-masks').addEventListener('change', event => { uniforms.maskPreview.value = Number(event.target.checked); syncColors(); });
+
+// Offline masks use connected geometry and texture samples to separate hair,
+// clothing and skin. Tinting preserves the original texture luminance and motifs.
+// The shared shader uniforms update colors without rebuilding the GLB.
+function maskedMaterial(original) {
+  const material = new THREE.MeshStandardMaterial({ map: original.map, roughness: .88, metalness: 0 });
+  material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = 'attribute vec3 regionMask; attribute vec3 facePosition; varying vec3 vRegionMask; varying vec3 vAvatarPosition; varying vec3 vFacePosition;\n' + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegionMask = regionMask; vAvatarPosition = position; vFacePosition = facePosition;');
+    shader.fragmentShader = `varying vec3 vRegionMask; varying vec3 vAvatarPosition;
+      varying vec3 vFacePosition; uniform float sleepAmount; uniform vec3 eyeCenter; uniform vec2 eyeSize; uniform vec3 lidColor;
+      uniform float starsAmount;
+      uniform vec3 hairTint; uniform vec3 clothesTint; uniform vec3 skinTint; uniform vec3 skinBase;
+      uniform float skinAmount; uniform float hairAmount; uniform float clothesAmount; uniform float maskPreview;
+    ` + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
+      #include <map_fragment>
+      vec3 originalColor = diffuseColor.rgb;
+      float hair = smoothstep(.2, .8, vRegionMask.x);
+      float clothes = smoothstep(.2, .8, vRegionMask.y) * (1.0 - hair);
+      float luminance = dot(originalColor, vec3(.2126, .7152, .0722));
+      vec3 newHair = hairTint * clamp(luminance / .07, .25, 1.5);
+      vec3 newClothes = clothesTint * clamp(luminance / .5, .12, 1.5);
+      diffuseColor.rgb = mix(originalColor, newHair, hair * hairAmount);
+      diffuseColor.rgb = mix(diffuseColor.rgb, newClothes, clothes * clothesAmount);
+      // The skin geometry mask excludes separate facial details. On the girl's
+      // shared head texture, protect pale sclera/teeth, dark eyes and pink lips.
+      float warmth = (originalColor.r - originalColor.b) / max(originalColor.r, .001);
+      float skinTexture = smoothstep(.27, .45, warmth) * smoothstep(.20, .32, originalColor.g / max(originalColor.r, .001)) * smoothstep(.06, .15, luminance);
+      float skin = smoothstep(.2, .8, vRegionMask.z) * (1.0 - hair) * (1.0 - clothes) * skinTexture;
+      vec3 newSkin = skinTint * clamp(originalColor / skinBase, vec3(.12), vec3(1.8));
+      diffuseColor.rgb = mix(diffuseColor.rgb, newSkin, skin * skinAmount);
+      vec2 cell = fract(vAvatarPosition.xy * 8.0) - .5;
+      float radius = .14 + .09 * cos(atan(cell.y, cell.x) * 5.0);
+      float star = 1.0 - smoothstep(radius - .02, radius, length(cell));
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, .83, .38), star * clothes * starsAmount);
+      vec2 eyeDistance = (vec2(abs(vFacePosition.x), vFacePosition.y) - eyeCenter.xy) / eyeSize;
+      float lid = (1.0 - smoothstep(.88, 1.15, length(eyeDistance))) * step(eyeCenter.z - .037, vFacePosition.z);
+      diffuseColor.rgb = mix(diffuseColor.rgb, lidColor * (1.0 + .07 * eyeDistance.y), lid * sleepAmount);
+      vec3 preview = mix(vec3(.32), vec3(.8, .1, .7), hair);
+      preview = mix(preview, vec3(.05, .7, .75), clothes);
+      preview = mix(preview, vec3(.93, .65, .22), skin);
+      diffuseColor.rgb = mix(diffuseColor.rgb, preview, maskPreview);
+    `);
+  };
+  material.customProgramCacheKey = () => 'sovkompis-region-mask-rig-v4-skin';
+  return material;
+}
+function disposeModel(model) {
+  const textures = new Set(), skeletons = new Set();
+  model?.traverse(object => {
+    if (!object.isMesh) return;
+    object.geometry.dispose();
+    if (object.skeleton) skeletons.add(object.skeleton);
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+      for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+      material.dispose();
+    }
+  });
+  for (const skeleton of skeletons) skeleton.dispose();
+  for (const texture of textures) { texture.dispose(); texture.source?.data?.close?.(); }
+}
+function setLoading() {
+  $('#load-state').hidden = false;
+  $('#load-state').replaceChildren();
+  const ring = document.createElement('span'); ring.className = 'loading-ring';
+  const title = document.createElement('strong'); title.textContent = 'Laddar din sovkompis…';
+  const copy = document.createElement('span'); copy.textContent = 'Modellen öppnas direkt i webbläsaren.';
+  $('#load-state').append(ring, title, copy);
+  host.setAttribute('aria-busy', 'true'); $('#start-practice').disabled = true;
+}
+function showError(message, retry = false) {
+  const title = document.createElement('strong'); title.textContent = '3D-vyn kunde inte öppnas';
+  const copy = document.createElement('span'); copy.textContent = message;
+  $('#load-state').replaceChildren(title, copy); $('#load-state').hidden = false;
+  host.setAttribute('aria-busy', 'false');
+  if (retry) {
+    const button = document.createElement('button'); button.className = 'button secondary companion-retry';
+    button.textContent = 'Försök igen'; button.onclick = () => loadModel(state.model);
+    $('#load-state').append(button);
+  }
+}
+async function loadModel(name) {
+  const version = ++loadVersion;
+  state.model = name; save(); syncColors();
+  document.querySelectorAll('[data-hairstyle]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.hairstyle === state[name].hairstyle)));
+  document.querySelectorAll('[data-model]').forEach(button => {
+    const active = button.dataset.model === name;
+    button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
+  });
+  syncName();
+  $('#model-stats').textContent = '';
+  if (!renderer) return;
+  setLoading();
+  // Keep all promises settled, so a late GLB success can always be disposed even
+  // if its companion mask request fails or another model supersedes this load.
+  const results = await Promise.allSettled([
+    loader.loadAsync(`./models/${name}.glb`),
+    fetch(`./models/${name}-mask-v2.bin?v=20261011-companion`).then(response => {
+      if (!response.ok) throw new Error('Mask download failed');
+      return response.arrayBuffer();
+    }),
+    fetch(`./models/${name}-mask-v2.json?v=20261011-companion`).then(response => {
+      if (!response.ok) throw new Error('Mask metadata unavailable');
+      return response.json();
+    }),
+  ]);
+  const gltf = results[0].status === 'fulfilled' ? results[0].value : null;
+  if (version !== loadVersion) { disposeModel(gltf?.scene); return; }
+  try {
+    if (!gltf || results[1].status !== 'fulfilled' || results[2].status !== 'fulfilled') throw new Error('Model or mask unavailable');
+    const mask = new Float32Array(results[1].value);
+    const meshes = []; gltf.scene.traverse(object => { if (object.isMesh) meshes.push(object); });
+    if (meshes.length !== 1 || mask.length !== meshes[0].geometry.attributes.position.count * 3) throw new Error('Mask does not match model');
+    const mesh = meshes[0];
+    const metadata = results[2].value;
+    if (metadata.version !== 2 || metadata.vertexCount !== mask.length / 3) throw new Error('Mask metadata does not match model');
+    const excluded = new Set(metadata.excludedTriangles);
+    mesh.geometry.setIndex(Array.from(mesh.geometry.index.array).filter((_, index) => !excluded.has(Math.floor(index / 3))));
+    mesh.geometry.boundingBox = new THREE.Box3(new THREE.Vector3().fromArray(metadata.visibleBounds.min), new THREE.Vector3().fromArray(metadata.visibleBounds.max));
+    mesh.geometry.boundingSphere = mesh.geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
+    mesh.geometry.setAttribute('regionMask', new THREE.BufferAttribute(mask, 3));
+    prepareAppearance(mesh.geometry);
+    const old = mesh.material; mesh.material = maskedMaterial(old); old.dispose();
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    const nextRig = createAvatarRig(mesh, name, metadata);
+    if (skeletonHelper) { scene.remove(skeletonHelper); skeletonHelper.dispose(); }
+    scene.remove(currentModel); disposeModel(currentModel); appearance?.dispose();
+    rig = nextRig; currentModel = rig.group; scene.add(currentModel);
+    appearance = createAppearance(rig, name);
+    uniforms.eyeCenter.value.fromArray(APPEARANCE[name].eye); uniforms.eyeSize.value.fromArray(APPEARANCE[name].eyeSize); uniforms.lidColor.value.set(APPEARANCE[name].skin);
+    syncHairstyle(); syncColors();
+    equipment = createEquipment(rig);
+    skeletonHelper = new THREE.SkeletonHelper(rig.mesh);
+    skeletonHelper.material.depthTest = false; skeletonHelper.renderOrder = 10;
+    skeletonHelper.visible = $('#show-rig').checked; scene.add(skeletonHelper);
+    rig.pose(); resetView();
+    const triangles = (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3;
+    $('#model-stats').textContent = `${triangles.toLocaleString('sv-SE')} trianglar · 15 ben · separata hår-, hud- och klädmasker.`;
+    $('#load-state').hidden = true; host.setAttribute('aria-busy', 'false'); $('#start-practice').disabled = false; render();
+  } catch (error) {
+    disposeModel(gltf?.scene);
+    console.error('Sovkompis 3D:', error);
+    showError('Kontrollera anslutningen och prova igen.', true);
+  }
+}
+function resetView() {
+  if (!controls) return;
+  if (stage === 'sleep') {
+    controls.target.set(0, .72, -.18); camera.position.set(2.5, 4.0, 3.3);
+  } else { controls.target.set(0, 1, 0); camera.position.set(0, 1.12, 4.4); }
+  controls.update(); render();
+}
+function moveView(angle = 0, zoom = 1, vertical = 0) {
+  if (!controls) return;
+  const offset = camera.position.clone().sub(controls.target);
+  const spherical = new THREE.Spherical().setFromVector3(offset);
+  spherical.theta += angle;
+  spherical.phi = THREE.MathUtils.clamp(spherical.phi + vertical, controls.minPolarAngle, controls.maxPolarAngle);
+  spherical.radius = THREE.MathUtils.clamp(spherical.radius * zoom, controls.minDistance, controls.maxDistance);
+  camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+  controls.update(); render();
+}
+$('#rotate-left').onclick = () => moveView(-Math.PI / 6);
+$('#rotate-right').onclick = () => moveView(Math.PI / 6);
+$('#zoom-in').onclick = () => moveView(0, .85);
+$('#zoom-out').onclick = () => moveView(0, 1.18);
+$('#reset-view').onclick = resetView;
+host.addEventListener('keydown', event => {
+  const actions = { ArrowLeft: () => moveView(-.2), ArrowRight: () => moveView(.2), ArrowUp: () => moveView(0, 1, -.15), ArrowDown: () => moveView(0, 1, .15), '+': () => moveView(0, .85), '=': () => moveView(0, .85), '-': () => moveView(0, 1.18), Home: resetView };
+  if (actions[event.key]) { event.preventDefault(); actions[event.key](); }
+});
+document.querySelectorAll('[data-model]').forEach(button => button.addEventListener('click', () => {
+  if (button.dataset.model !== state.model) loadModel(button.dataset.model);
+}));
+
+function announce(message) { $('#companion-announcer').textContent = message; }
+function lookAtPart(id, site = progress.oximeterSite, duration = Infinity) {
+  if (!rig) return;
+  lookFocus = attachmentFor(rig, id, site).point;
+  focusUntil = performance.now() + duration; render();
+}
+function reactToPlacement(id, site) {
+  clearTimeout(reactionTimer); reaction = null;
+  lookAtPart(id, site, REACTION_DURATION + 350);
+  if (id === 'cannula') {
+    reaction = { started: performance.now() };
+    reactionTimer = setTimeout(() => { reaction = null; render(); }, REACTION_DURATION);
+  }
+}
+function updateAnimation(now) {
+  if (!rig) return;
+  const sleeping = stage === 'sleep';
+  const preview = $('#sleep-preview').value;
+  const t = sleeping ? (preview !== 'auto' ? Number(preview) : reducedMotion.matches ? 1 : Math.min(1, (now - sleepStarted) / BEDTIME_DURATION)) : 0;
+  const frame = bedtimeFrame(t, rig.rest.hips.toArray());
+  const elapsed = Math.min(.05, Math.max(0, (now - lastPoseTime) / 1000)); lastPoseTime = now;
+  if (now > focusUntil) lookFocus = null;
+  const idle = !sleeping && !reducedMotion.matches ? idleFrame(now, state.model === 'girl' ? 7 : 0) : { pitch: 0, yaw: 0, headTilt: 0, sway: 0, shoulders: 0, blink: 0 };
+  const target = !sleeping && lookFocus ? gazeFor(rig.profile, lookFocus) : idle;
+  const shake = rejectionStarted !== null && !sleeping && !reducedMotion.matches ? rejectionFrame(now - rejectionStarted) : { yaw: 0, active: false };
+  if (rejectionStarted !== null && now - rejectionStarted >= REJECTION_DURATION) rejectionStarted = null;
+  const idleAmount = selected || reaction || waveStarted || shake.active ? .15 : 1;
+  for (const axis of ['pitch', 'yaw']) gaze[axis] = reducedMotion.matches ? 0 : THREE.MathUtils.damp(gaze[axis], target[axis], 9, elapsed);
+  const laugh = reaction && !sleeping ? reactionFrame(now - reaction.started) : { giggle: 0, eyes: 0, active: false };
+  const waveTime = waveStarted ? (now - waveStarted) / 1900 : 0;
+  const greet = waveStarted && waveTime < 1 && !reducedMotion.matches ? Math.sin(waveTime * Math.PI) * (.85 + .15 * Math.sin(waveTime * Math.PI * 6)) : 0;
+  if (waveTime >= 1 || reducedMotion.matches) waveStarted = 0;
+  rig.group.rotation.set(frame.rootX, frame.rootY, 0);
+  // Preserve the pelvis anchor while the spine, knees and arms move independently.
+  rig.group.position.fromArray(frame.hip).sub(rig.rest.hips.clone().applyQuaternion(rig.group.quaternion));
+  rig.pose({ ...frame, breath: reducedMotion.matches ? 0 : Math.sin(now / (sleeping ? 1100 : 1550)) * (sleeping ? 1 : .6), greet, sway: idle.sway * idleAmount, headTilt: idle.headTilt * idleAmount, shoulders: idle.shoulders * idleAmount, lookPitch: gaze.pitch, lookYaw: gaze.yaw + shake.yaw, giggle: reducedMotion.matches ? 0 : laugh.giggle });
+  const eyesClosed = sleeping ? frame.eyes : reducedMotion.matches ? 0 : Math.max(laugh.eyes, idle.blink);
+  uniforms.sleepAmount.value = eyesClosed; appearance?.setSleep(eyesClosed);
+  ambientLight.intensity = THREE.MathUtils.lerp(2.2, .72, frame.dim);
+  keyLight.intensity = THREE.MathUtils.lerp(2.6, .95, frame.dim);
+  fillLight.intensity = THREE.MathUtils.lerp(1.5, .45, frame.dim);
+  bedroom.position.z = sleeping ? frame.bedOffset : 0;
+  const duvet = bedroom.getObjectByName('duvet'), unfold = .08 + .92 * frame.blanket;
+  duvet.visible = true; duvet.scale.z = unfold; duvet.position.set(0, -.50 * (1 - frame.blanket), 1.28 * (1 - unfold));
+  $('#sleep-symbols').hidden = !sleeping || t < .98;
+  const caption = $('#bedtime-caption'); caption.hidden = !sleeping || t >= 1;
+  caption.textContent = { sitting: 'Först sätter vi oss…', 'legs-up': 'Upp med de små fötterna…', reclining: 'Huvudet på den mjuka kudden…', 'tucking-in': 'Och filten på. God natt! 💤' }[frame.phase] || '';
+  const bubble = $('#reaction-bubble'); bubble.hidden = !laugh.active;
+  if (laugh.active) {
+    const point = rig.bones.head.localToWorld(new THREE.Vector3(0, .53, .08)).project(camera);
+    bubble.style.left = `${THREE.MathUtils.clamp((point.x * .5 + .5) * host.clientWidth, 88, host.clientWidth - 88)}px`;
+    bubble.style.top = `${Math.max(44, (-point.y * .5 + .5) * host.clientHeight - 18)}px`;
+  }
+  host.dataset.eyes = eyesClosed > .99 ? 'closed' : 'open';
+  host.dataset.pose = sleeping ? frame.phase : shake.active ? 'head-shake' : laugh.active ? 'giggle' : 'standing';
+  host.dataset.gaze = lookFocus ? 'following' : 'rest';
+}
+function renderJourney() {
+  $('#app').dataset.stage = stage;
+  const step = stage === 'complete' ? 'practice' : stage;
+  document.querySelectorAll('[data-stage-step]').forEach(item => {
+    if (item.dataset.stageStep === step) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current');
+  });
+  for (const [id, value] of [['welcome-panel', 'welcome'], ['customize-panel-3d', 'customize'], ['practice-panel-3d', 'practice'], ['complete-panel-3d', 'complete'], ['sleep-panel-3d', 'sleep']]) $(`#${id}`).hidden = stage !== value;
+  $('#companion-intro').hidden = stage !== 'customize';
+  $('.companion-aside').hidden = stage === 'welcome';
+  $('.page-heading').hidden = stage === 'welcome';
+  $('.companion-journey').hidden = stage === 'welcome';
+  $('#welcome-journey').hidden = stage !== 'welcome';
+  $('#returning-note').hidden = !progress.rounds;
+  $('#returning-note').textContent = `Du har redan övat ${progress.rounds} ${progress.rounds === 1 ? 'gång' : 'gånger'} och samlat ${progress.xp} XP. Välkommen tillbaka!`;
+  $('#create-companion').textContent = `${progress.rounds ? 'Träffa' : 'Skapa'} din sovkompis →`;
+  $('#coach-3d').hidden = stage !== 'practice';
+  $('#sleep-symbols').hidden = stage !== 'sleep';
+  $('#celebration-3d').hidden = stage !== 'complete';
+  $('#greet-3d').disabled = stage !== 'customize';
+  $('#sleep-preview').disabled = stage !== 'sleep';
+  $('#companion-xp').textContent = `${progress.xp + (stage === 'practice' && !counted ? placed.length * XP_PER_PART : 0)} XP`;
+  const titles = { welcome: ['Hej och välkommen till Sovkompis.', 'Vi tar det tillsammans, en liten bit i taget.'], customize: ['En kompis på ditt sätt.', 'Välj figur, frisyr och favoritfärger. Du bestämmer.'], practice: ['En liten del i taget.', 'Dra en del till figuren. Du kan också välja del och trycka på rätt plats.'], complete: ['Bravo! Ni gjorde det tillsammans.', 'Alla åtta delarna är på plats. Nu kan din sovkompis vila.'], sleep: ['Dags för en tryggare natt.', 'En mjuk kudde, en varm filt och en kompis som somnar.'] };
+  $('#companion-title').textContent = titles[stage][0]; $('#companion-subtitle').textContent = titles[stage][1];
+  $('.viewer-hint').textContent = stage === 'practice' ? 'Välj del · dra eller tryck på en plats' : stage === 'sleep' ? 'Sov gott, lilla kompis · dra för att se från sidan' : 'Dra för att snurra · nyp för att zooma';
+  $('#sleep-score').textContent = `${progress.rounds} ${progress.rounds === 1 ? 'övning klar' : 'övningar klara'} · ${progress.xp} XP samlade`;
+  if (bedroom) bedroom.visible = stage === 'sleep';
+  if (floor) floor.visible = stage !== 'sleep';
+  updateInventory(); render();
+}
+function changeStage(next) {
+  stopReading();
+  stage = next; selected = null; hinted = false; rejectionStarted = null;
+  history.replaceState(null, '', next === 'welcome' ? location.pathname + location.search : '#avatar');
+  if (next !== 'complete') { reaction = null; clearTimeout(reactionTimer); lookFocus = null; }
+  if (next === 'sleep') { sleepStarted = performance.now(); waveStarted = 0; $('#sleep-preview').value = 'auto'; }
+  if (next === 'customize' || next === 'welcome') { placed = []; counted = false; equipment?.clear(); }
+  renderJourney(); resetView();
+  $(next === 'welcome' ? '#welcome-title' : '#companion-title').focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'instant' });
+}
+function startPractice() {
+  if (!rig || !$('#load-state').hidden) return;
+  placed = []; selected = null; counted = false; feedback = ''; feedbackKind = ''; hinted = false; waveStarted = 0;
+  equipment.clear(); buildInventory(); updateCoach(); changeStage('practice');
+  announce('Välj en del och dra den till figuren, eller tryck på delen och sedan på en plats.');
+}
+function buildInventory() {
+  $('#equipment-3d-list').innerHTML = EQUIPMENT.map((item, index) => `<button class="equipment-card" data-equipment="${item.id}" aria-pressed="false"><span class="equipment-image">${equipmentSVG(item.id)}</span><span class="equipment-text"><strong>${item.name}</strong><small>${item.subtitle || 'Tryck eller dra'}</small></span><span class="equipment-number">${index + 1}</span></button>`).join('');
+}
+function updateInventory() {
+  document.querySelectorAll('#equipment-3d-list [data-equipment]').forEach(button => {
+    const item = EQUIPMENT.find(item => item.id === button.dataset.equipment), done = placed.includes(item.id);
+    button.disabled = done; button.classList.toggle('placed', done); button.classList.toggle('selected', item.id === selected);
+    button.setAttribute('aria-pressed', String(item.id === selected));
+    button.querySelector('small').textContent = done ? 'På plats!' : item.subtitle || 'Tryck eller dra';
+    button.querySelector('.equipment-number').textContent = done ? '✓' : String(EQUIPMENT.indexOf(item) + 1);
+  });
+  $('#parts-count').textContent = `${placed.length} av ${EQUIPMENT.length}`;
+  $('#progress-label-3d').textContent = `${placed.length}/${EQUIPMENT.length} delar`;
+  $('#progress-fill-3d').style.width = `${placed.length / EQUIPMENT.length * 100}%`;
+}
+function updateCoach() {
+  const item = EQUIPMENT.find(item => item.id === selected), success = feedbackKind === 'correct';
+  $('#coach-card-3d').classList.toggle('success', success);
+  $('#coach-overline').textContent = success ? 'FINT JOBBAT' : feedbackKind === 'retry' ? 'PROVA IGEN, I DIN TAKT' : item ? 'LÄR KÄNNA DELEN' : 'VI BÖRJAR HÄR';
+  $('#coach-title').textContent = success ? 'Där satt den!' : item?.name || 'Vilken del vill du prova?';
+  const instruction = item?.id === 'oximeter' ? 'Sätt pulsoximetern på fingret eller tån. Båda går bra i övningen.' : item?.instruction;
+  $('#coach-copy').textContent = feedback || (item ? `${item.description} ${instruction}` : 'Välj en del i listan. Det finns ingen brådska.');
+  $('#hint-3d').hidden = !item; $('#hint-3d').textContent = hinted ? 'Dölj ledtråd' : 'Visa mig var';
+}
+function selectPart(id) {
+  if (stage !== 'practice' || placed.includes(id) || !EQUIPMENT.some(item => item.id === id)) return;
+  selected = id; feedback = ''; feedbackKind = ''; hinted = false;
+  lookAtPart(id);
+  updateInventory(); updateCoach(); rebuildTargets(); resetView();
+  announce(`${EQUIPMENT.find(item => item.id === id).name} vald. Välj en plats på figuren.`);
+}
+function rebuildTargets() {
+  $('#targets-3d').replaceChildren();
+  if (stage !== 'practice' || !selected) return;
+  for (const item of availableTargets(placed, selected)) {
+    const button = document.createElement('button'); button.className = 'target-3d'; button.dataset.target = item.targetId; button.dataset.equipment = item.id; button.dataset.site = item.site || '';
+    const label = item.short;
+    button.setAttribute('aria-label', `Placera vald del vid ${label.toLowerCase()}`);
+    button.innerHTML = `<span>${item.number || '+'}</span><span class="target-name">${label}</span>`;
+    button.classList.toggle('hinted', hinted && item.id === selected);
+    button.addEventListener('pointerenter', () => lookAtPart(item.id, item.site));
+    button.addEventListener('focus', () => lookAtPart(item.id, item.site));
+    button.addEventListener('click', () => placePart(item.targetId)); $('#targets-3d').append(button);
+  }
+  updateTargets();
+}
+function updateTargets() {
+  if (!equipment) return;
+  if (stage !== 'practice' || !selected) { $('#targets-3d').hidden = true; return; }
+  $('#targets-3d').hidden = false;
+  const width = host.clientWidth, height = host.clientHeight;
+  rig.group.updateMatrixWorld(true);
+  for (const button of $('#targets-3d').children) {
+    const point = equipment.anchor(button.dataset.equipment, button.dataset.site || progress.oximeterSite).getWorldPosition(new THREE.Vector3()).project(camera);
+    button.style.left = `${(point.x * .5 + .5) * width}px`; button.style.top = `${(-point.y * .5 + .5) * height}px`;
+    // Hidden from the back; selecting another item or Framifrån returns to the front.
+    button.hidden = point.z < -1 || point.z > 1 || camera.position.z < -.1;
+  }
+}
+function placePart(target) {
+  if (!selected || counted || stage !== 'practice') return;
+  const result = placeEquipment(placed, selected, target), item = EQUIPMENT.find(item => item.id === selected);
+  if (!result.correct) {
+    rejectPlacement();
+    feedback = 'Nästan! Prova en annan plats. Du kan trycka på ”Visa mig var” om du vill ha hjälp.'; feedbackKind = 'retry'; updateCoach(); announce(feedback); return;
+  }
+  rejectionStarted = null; host.dataset.feedback = 'correct'; placementAudio.play(true);
+  if (result.site) { progress.oximeterSite = result.site; saveProgress(storage, progress); }
+  equipment.place(selected, progress.oximeterSite); reactToPlacement(selected, progress.oximeterSite);
+  placed = result.placed; feedback = item.success; feedbackKind = 'correct'; selected = null; hinted = false;
+  rebuildTargets(); updateInventory(); updateCoach();
+  announce(`${feedback} Plus ${XP_PER_PART} XP. ${placed.length} av ${EQUIPMENT.length} delar på plats.`);
+  if (result.complete) {
+    counted = true;
+    // Read the latest completed progress to preserve rounds earned in another tab.
+    try { if (storage?.getItem('sovkompis-v1')) progress = loadProgress(storage); } catch { /* Keep in-memory progress. */ }
+    progress = completeRound(progress);
+    const saved = saveProgress(storage, progress); syncColors();
+    $('#reward-message').textContent = progress.rounds >= 3 ? `${progress.rounds === 3 ? 'Du låste upp' : 'Du har låst upp'} stjärnpyjamasen! Den finns bland din kompis kläder.` : `${3 - progress.rounds} ${3 - progress.rounds === 1 ? 'övning' : 'övningar'} kvar till din stjärnpyjamas.`;
+    if (!saved) $('#reward-message').textContent += ' Webbläsaren kan inte spara poängen mellan besök.';
+    $('#celebration-3d').innerHTML = Array.from({ length: 32 }, (_, i) => `<i style="--left:${i * 37 % 100}%;--delay:${i % 5 * .13}s;--color:${['#dcb875', '#86b3a1', '#bda3cf', '#deaa9d'][i % 4]}"></i>`).join('');
+    changeStage('complete'); announce(`Bravo! Alla åtta delar är på plats. Du har fått ${ROUND_XP} XP.`);
+  } else {
+    renderJourney();
+    document.querySelector('#equipment-3d-list [data-equipment]:not(:disabled)')?.focus({ preventScroll: true });
+  }
+  render();
+}
+$('#start-practice').onclick = startPractice;
+$('#go-sleep').onclick = () => changeStage('sleep');
+$('#replay-bedtime').onclick = () => { sleepStarted = performance.now(); $('#sleep-preview').value = 'auto'; resetView(); render(); };
+$('#sleep-preview').onchange = () => { if ($('#sleep-preview').value === 'auto') sleepStarted = performance.now(); render(); };
+$('#edit-avatar').onclick = $('#sleep-edit').onclick = () => changeStage('customize');
+document.querySelectorAll('[data-replay]').forEach(button => button.onclick = startPractice);
+$('#star-pajamas').onclick = () => { if (progress.rounds < 3) return; state[state.model].stars = !state[state.model].stars; save(); syncColors(); };
+$('#show-rig').onchange = event => { if (skeletonHelper) skeletonHelper.visible = event.target.checked; render(); };
+$('#greet-3d').onclick = () => { if (stage === 'customize') { waveStarted = performance.now(); render(); } };
+$('#hint-3d').onclick = () => { hinted = !hinted; rebuildTargets(); updateCoach(); render(); };
+
+const placementAudio = createPlacementAudio();
+placementAudio.setEnabled(state.sound);
+function syncSound() {
+  $('#sound-toggle').setAttribute('aria-pressed', String(state.sound));
+  $('#sound-toggle').textContent = state.sound ? '♫ Ljud på' : '♫ Ljud av';
+  $('#sound-toggle').title = state.sound ? 'Stäng av placeringsljud' : 'Slå på placeringsljud';
+}
+$('#sound-toggle').onclick = () => { state.sound = !state.sound; placementAudio.setEnabled(state.sound); syncSound(); save(); };
+function rejectPlacement() {
+  reaction = null; clearTimeout(reactionTimer); waveStarted = 0;
+  rejectionStarted = performance.now(); host.dataset.feedback = 'retry';
+  placementAudio.play(false); render();
+}
+function syncName() {
+  $('#avatar-name').value = progress.avatar.name;
+  $('#model-name').textContent = progress.avatar.name === 'Min sovkompis' ? modelNames[state.model] : progress.avatar.name;
+}
+$('#avatar-name').addEventListener('input', event => {
+  progress.avatar.name = event.target.value.trim().slice(0, 24) || 'Min sovkompis';
+  $('#model-name').textContent = progress.avatar.name;
+  if (!saveProgress(storage, progress)) $('#save-note').textContent = 'Du kan öva, men webbläsaren kan inte spara dina val mellan besök.';
+});
+$('#create-companion').onclick = () => changeStage('customize');
+document.querySelectorAll('[data-home]').forEach(button => button.onclick = () => changeStage('welcome'));
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#avatar' || !location.hash) changeStage(location.hash ? 'customize' : 'welcome');
+});
+
+let reading = false, readingVersion = 0;
+function syncReading() {
+  document.querySelectorAll('[data-listen]').forEach(button => { button.textContent = reading ? 'Sluta lyssna' : 'Lyssna'; button.setAttribute('aria-pressed', String(reading)); });
+}
+function stopReading() { readingVersion++; if ('speechSynthesis' in window) speechSynthesis.cancel(); reading = false; syncReading(); }
 function listen() {
- if (!('speechSynthesis' in window)) { announce('Uppläsning stöds inte i den här webbläsaren. All information finns som text på sidan.'); showDialog('help'); return; }
- if (reading) { speechSynthesis.cancel(); reading = false; render(); return; }
- const texts = {
-  welcome: 'Hej och välkommen till Sovkompis. Här får du skapa en egen kompis och lära känna delarna du ska ha på dig när du sover. Vi tar det tillsammans, en liten bit i taget. Tryck på Skapa din sovkompis för att börja.',
-  avatar: 'Skapa en kompis på ditt sätt. Välj hår, ansikte och kläder. Du kan också ge din kompis ett namn. Tryck på Nu provar vi delarna när du känner dig redo.',
-  practice: currentItem() ? `${currentItem().name}. ${currentItem().description} ${currentItem().id === 'oximeter' ? 'Placera den vid fingret eller tån.' : currentItem().instruction}` : 'En liten del i taget. Välj en del i listan. Dra den till din sovkompis, eller tryck på delen och sedan på rätt plats. Du får prova hur många gånger du vill.',
- };
- const utterance = new SpeechSynthesisUtterance(texts[screen] || 'Fint jobbat. Du har klarat övningen.');
- utterance.lang = 'sv-SE'; utterance.rate = .88; const voice = speechSynthesis.getVoices().find(v => v.lang.startsWith('sv')); if (voice) utterance.voice = voice;
- utterance.onend = () => { reading = false; render(); };
- utterance.onerror = e => { reading = false; render(); if (e.error !== 'canceled' && e.error !== 'interrupted') announce('Uppläsningen kunde inte starta. Du kan läsa samma instruktion på sidan.'); };
- reading = true; render(); speechSynthesis.speak(utterance);
+  if (reading) { stopReading(); return; }
+  if (!('speechSynthesis' in window)) { announce('Din webbläsare har inte stöd för uppläsning. Du kan läsa texten på sidan.'); return; }
+  const text = stage === 'welcome' ? [$('#welcome-title'), $('.intro'), $('.welcome-description')].map(el => el.textContent).join('. ') : [$('#companion-title'), $('#companion-subtitle'), ...(stage === 'practice' ? [$('#coach-copy')] : [])].map(el => el.textContent).join('. ');
+  const utterance = new SpeechSynthesisUtterance(text), version = ++readingVersion;
+  utterance.lang = 'sv-SE'; utterance.rate = .9;
+  const finish = () => { if (version === readingVersion) { reading = false; syncReading(); } };
+  utterance.onend = finish; utterance.onerror = finish;
+  reading = true; syncReading(); speechSynthesis.speak(utterance);
 }
-app.addEventListener('click', e => {
- const el = e.target.closest('[data-action]'); if (!el || el.disabled || performance.now() < suppressClickUntil) return;
- const action = el.dataset.action;
- if (action === 'home') go('welcome');
- if (action === 'create') go('avatar');
- if (action === 'nav') { const step = Number(el.dataset.step); step === 1 ? go('welcome') : step === 2 ? go('avatar') : roundCounted ? go('celebrate') : go('practice'); }
- if (action === 'start') { progress.avatar.name = progress.avatar.name.trim() || DEFAULT_AVATAR.name; save(); startRound(); }
- if (action === 'tab') { tab = el.dataset.value; render(); }
- if (action === 'customize') { progress.avatar[el.dataset.field] = el.dataset.value; save(); render(); }
- if (action === 'star-outfit' && progress.rounds >= 3) { progress.avatar.outfit = 'stars'; save(); render(); }
- if (action === 'select') selectEquipment(el.dataset.equipment);
- if (action === 'place') place(el.dataset.target);
- if (action === 'hint') { showHint = !showHint; render(); if (showHint) announce('Rätt plats markeras nu på figuren.'); }
- if (action === 'restart' || action === 'replay') startRound(true);
- if (action === 'sleep') go('sleep');
- if (action === 'wear-reward' && progress.rounds >= 3) { progress.avatar.outfit = 'stars'; save(); render(); announce('Stjärntröjan är på! Du får se den när din kompis somnar.'); }
- if (action === 'help' || action === 'about') showDialog(action);
- if (action === 'listen') listen();
-});
-app.addEventListener('input', e => {
- if (e.target.id === 'avatar-name') { progress.avatar.name = e.target.value.slice(0, 24); save(); const label = document.querySelector('.avatar-name'); if (label) label.innerHTML = `${escape(progress.avatar.name || DEFAULT_AVATAR.name)} <span>✦</span>`; }
-});
-app.addEventListener('keydown', e => {
- const el = e.target.closest('[role="tab"]');
- if (el && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-  e.preventDefault(); const tabs = ['hair', 'face', 'clothes']; const i = tabs.indexOf(el.dataset.value); tab = e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[2] : tabs[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; render(); document.querySelector(`#tab-${tab}`)?.focus();
- }
-});
-let suppressClickUntil = 0;
-app.addEventListener('pointerdown', e => {
- const card = e.target.closest('[data-equipment]');
- if (!card || card.disabled || e.button !== 0) return;
- drag = { id: card.dataset.equipment, startX: e.clientX, startY: e.clientY, moving: false, pointerId: e.pointerId };
-});
-window.addEventListener('pointermove', e => {
- if (!drag || drag.pointerId !== e.pointerId) return;
- if (!drag.moving && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 8) {
-  drag.moving = true; selected = drag.id; feedback = ''; feedbackKind = ''; showHint = false; render();
-  const ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.innerHTML = equipmentSVG(drag.id); ghost.setAttribute('aria-hidden', 'true'); document.body.append(ghost); document.body.classList.add('dragging');
- }
- if (drag.moving) {
-  e.preventDefault(); const ghost = document.querySelector('.drag-ghost'); if (ghost) ghost.style.transform = `translate(${e.clientX - 43}px, ${e.clientY - 43}px)`;
-  document.querySelectorAll('.drop-target.over').forEach(t => t.classList.remove('over')); document.elementFromPoint(e.clientX, e.clientY)?.closest('.drop-target')?.classList.add('over');
- }
-}, { passive: false });
-function finishDrag(e, canceled = false) {
- if (!drag || drag.pointerId !== e.pointerId) return;
- const moved = drag.moving; drag = null;
- document.querySelector('.drag-ghost')?.remove(); document.body.classList.remove('dragging');
- if (moved) {
-  suppressClickUntil = performance.now() + 300;
-  const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-target]');
-  if (!canceled && target) place(target.dataset.target);
-  else if (!canceled) { feedback = 'Släpp delen på en av de små markeringarna på figuren. Du kan också trycka på en markering.'; feedbackKind = 'retry'; render(); announce(feedback); }
- }
+document.querySelectorAll('[data-listen]').forEach(button => button.onclick = listen);
+function showInfo(help) {
+  const previous = document.activeElement, dialog = document.createElement('dialog'); dialog.className = 'info-dialog';
+  dialog.setAttribute('aria-labelledby', 'info-title');
+  dialog.innerHTML = `<button class="help-button dialog-close" aria-label="Stäng">×</button><h2 id="info-title">${help ? 'Vi tar det i din takt.' : 'Om Sovkompis'}</h2>${help ? '<p>Det finns ingen tidtagare och du förlorar inga poäng om du provar fel.</p><ol><li>Välj en del i listan.</li><li>Dra den till figuren, eller tryck först på delen och sedan på en plats.</li><li>Tryck på ”Visa mig var” om du vill ha en ledtråd.</li></ol><p>Rätt placering ger en ljus ton. Vid fel placering skakar kompisen på huvudet och en mjuk felton hörs. Du kan stänga av ljudet högst upp.</p><p>Använd Tab för att flytta mellan knappar och Enter eller mellanslag för att välja.</p>' : '<p>Sovkompis är en prototyp för att lära känna utrustningen inför en andningsregistrering. Figuren och utrustningen är förenklade.</p><p>Följ instruktionerna från din mottagning när det är dags att använda den riktiga utrustningen. Personalen visar exakt placering.</p><p>Dina val och färdiga övningar sparas bara i den här webbläsaren. Inget konto eller patientuppgifter behövs. Ett påhittat namn går bra.</p>'}<button class="button primary dialog-done">Tillbaka till min sovkompis</button>`;
+  document.body.append(dialog); dialog.showModal();
+  dialog.querySelector('.dialog-close').onclick = dialog.querySelector('.dialog-done').onclick = () => dialog.close();
+  dialog.addEventListener('close', () => { dialog.remove(); previous?.focus(); });
 }
-window.addEventListener('pointerup', e => finishDrag(e));
-window.addEventListener('pointercancel', e => finishDrag(e, true));
-window.addEventListener('keydown', e => { if (e.key === 'Escape' && drag) { finishDrag({ pointerId: drag.pointerId, clientX: 0, clientY: 0 }, true); render(); } });
-render();
+document.querySelectorAll('[data-help]').forEach(button => button.onclick = () => showInfo(true));
+$('#about').onclick = () => showInfo(false);
+
+let dragging = null, suppressClickUntil = 0;
+const inventory = $('#equipment-3d-list');
+inventory.addEventListener('click', event => {
+  const button = event.target.closest('[data-equipment]');
+  if (button && !button.disabled && performance.now() > suppressClickUntil) selectPart(button.dataset.equipment);
+});
+inventory.addEventListener('pointerdown', event => {
+  const button = event.target.closest('[data-equipment]');
+  if (!button || button.disabled || event.button !== 0 || stage !== 'practice') return;
+  selectPart(button.dataset.equipment);
+  dragging = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false, ghost: null };
+  inventory.setPointerCapture(event.pointerId); controls.enabled = false;
+});
+function dropTargetAt(x, y) {
+  let nearest = null, distance = 38;
+  for (const button of $('#targets-3d').children) {
+    if (button.hidden) continue;
+    const rect = button.getBoundingClientRect(), d = Math.hypot(x - rect.x - rect.width / 2, y - rect.y - rect.height / 2);
+    if (d < distance) { distance = d; nearest = button; }
+  }
+  return nearest;
+}
+inventory.addEventListener('pointermove', event => {
+  if (!dragging || dragging.pointerId !== event.pointerId) return;
+  if (!dragging.moved && Math.hypot(event.clientX - dragging.x, event.clientY - dragging.y) < 7) return;
+  event.preventDefault(); dragging.moved = true;
+  if (!dragging.ghost) {
+    dragging.ghost = document.createElement('div'); dragging.ghost.className = 'companion-drag-ghost';
+    dragging.ghost.innerHTML = `${equipmentSVG(selected)}<span>${EQUIPMENT.find(item => item.id === selected).name}</span>`;
+    document.body.append(dragging.ghost);
+  }
+  dragging.ghost.style.left = `${event.clientX}px`; dragging.ghost.style.top = `${event.clientY}px`;
+  const target = dropTargetAt(event.clientX, event.clientY);
+  if (target) lookAtPart(target.dataset.equipment, target.dataset.site || progress.oximeterSite);
+  for (const button of $('#targets-3d').children) button.classList.toggle('drag-over', button === target);
+});
+function endDrag(event, cancelled = false) {
+  if (!dragging || dragging.pointerId !== event.pointerId) return;
+  const old = dragging; dragging = null; old.ghost?.remove(); controls.enabled = true;
+  if (inventory.hasPointerCapture(event.pointerId)) inventory.releasePointerCapture(event.pointerId);
+  for (const button of $('#targets-3d').children) button.classList.remove('drag-over');
+  if (!cancelled && old.moved) { suppressClickUntil = performance.now() + 350; placePart(dropTargetAt(event.clientX, event.clientY)?.dataset.target || 'miss'); }
+}
+inventory.addEventListener('pointerup', event => endDrag(event));
+inventory.addEventListener('pointercancel', event => endDrag(event, true));
+inventory.addEventListener('lostpointercapture', event => endDrag(event, true));
+
+renderJourney(); syncName(); syncSound();
+try {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(35, 1, .05, 50);
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.domElement.setAttribute('aria-hidden', 'true'); host.append(renderer.domElement);
+  ambientLight = new THREE.HemisphereLight(0xffffff, 0xa3b797, 2.2); scene.add(ambientLight);
+  const key = keyLight = new THREE.DirectionalLight(0xfff4e5, 2.6); key.position.set(3, 5, 4);
+  key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.left = -2; key.shadow.camera.right = 2; key.shadow.camera.top = 3; key.shadow.camera.bottom = -2;
+  key.shadow.normalBias = .02; key.shadow.bias = -.0002; scene.add(key);
+  const fill = fillLight = new THREE.DirectionalLight(0xe6f1ff, 1.5); fill.position.set(-3, 2, -3); scene.add(fill);
+  floor = new THREE.Mesh(new THREE.CircleGeometry(1.05, 64), new THREE.ShadowMaterial({ opacity: .13 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -.012; floor.receiveShadow = true; scene.add(floor);
+  bedroom = createBedroom(); scene.add(bedroom);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enablePan = false; controls.enableDamping = false; controls.minDistance = 2.4; controls.maxDistance = 7;
+  controls.minPolarAngle = .45; controls.maxPolarAngle = Math.PI / 2 + .18;
+  controls.addEventListener('change', render);
+  const resize = () => {
+    const { width, height } = host.getBoundingClientRect();
+    renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix(); render();
+  };
+  new ResizeObserver(resize).observe(host); resize(); resetView();
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { placementAudio.stop(); stopReading(); } else render(); });
+  renderer.domElement.addEventListener('webglcontextlost', event => {
+    event.preventDefault(); ++loadVersion;
+    showError('3D-visningen pausades av webbläsaren. Ladda om sidan för att fortsätta.');
+  });
+  renderJourney(); loadModel(state.model);
+} catch (error) {
+  console.error('Sovkompis WebGL:', error);
+  renderer = null;
+  showError('Din webbläsare kunde inte starta 3D. Prova att ladda om sidan eller öppna den i en nyare webbläsare.');
+  syncColors();
+}

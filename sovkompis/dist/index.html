@@ -1,18 +1,55 @@
 <!doctype html>
 <html lang="sv">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f8f9f5" />
-    <meta name="description" content="Lär känna utrustningen inför din andningsregistrering. Skapa en sovkompis och öva i din egen takt." />
-    <title>Sovkompis – en trygg start på natten</title>
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261010-motion" />
-  </head>
-  <body>
-    <a class="skip-link" href="#main">Hoppa till innehållet</a>
-    <div id="app"></div>
-    <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
-    <script type="module" src="./app.js?v=20261010-motion"></script>
-  </body>
-</html>
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f8f9f5"><title>Sovkompis – en tryggare natt</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=20261011-companion"><link rel="stylesheet" href="./companion.css?v=20261011-companion">
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.min.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Hoppa till innehållet</a>
+<div id="app" data-stage="welcome">
+  <header class="header"><button class="brand companion-brand" data-home aria-label="Sovkompis – till välkomsten"><img src="./favicon.svg" alt="" width="40" height="40">Sovkompis<span class="brand-dot">✦</span></button><div class="header-actions"><button class="text-button sound-toggle" id="sound-toggle" aria-pressed="true">♫ Ljud på</button><button class="help-button" data-help aria-label="Hjälp">?</button></div></header>
+  <main id="main" class="inner-main companion-main">
+    <div class="page-heading"><div><div class="eyebrow">DIN SOVKOMPIS · I DIN TAKT</div><h1 id="companion-title" tabindex="-1">En kompis på ditt sätt.</h1><p id="companion-subtitle">Välj en figur, prova färger och vänd på din kompis.</p></div><div class="heading-actions"><button class="text-button" data-listen>Lyssna</button><button class="text-button" data-home>← Till välkomsten</button></div></div>
+    <div class="companion-journey"><ol aria-label="Din resa"><li data-stage-step="customize" aria-current="step"><span>1</span> Din kompis</li><li data-stage-step="practice"><span>2</span> Öva tillsammans</li><li data-stage-step="sleep"><span>3</span> God natt</li></ol><span class="xp-pill" id="companion-xp">0 XP</span></div>
+    <div class="companion-layout">
+      <section id="welcome-panel" class="welcome-copy" aria-labelledby="welcome-title">
+        <div class="eyebrow">INFÖR DIN ANDNINGSREGISTRERING</div><h1 id="welcome-title" tabindex="-1">Hej och välkommen<br>till <em>Sovkompis.</em></h1>
+        <p class="intro">En ny upplevelse känns ofta lättare när man har fått prova först.</p><p class="welcome-description">Här får du skapa en egen kompis och lära känna delarna du ska ha på dig när du sover. Vi tar det tillsammans, en liten bit i taget.</p>
+        <div class="hero-actions"><button class="button primary" id="create-companion">Skapa din sovkompis →</button><button class="text-button" data-listen>Lyssna</button></div><p class="calm-note">♡ I din takt. Inga tidtagare. Du får prova igen.</p><p id="returning-note" class="returning-note" hidden></p>
+      </section>
+      <section id="customize-panel-3d" class="panel companion-settings" aria-labelledby="model-heading">
+        <h2 id="model-heading"><span>01</span> Välj din figur</h2>
+        <div class="model-picker" role="group" aria-label="3D-modell"><button data-model="boy" class="model-option active" aria-pressed="true"><span class="model-symbol">☀</span><strong>Pojke</strong><small>Välj egen frisyr</small></button><button data-model="girl" class="model-option" aria-pressed="false"><span class="model-symbol">✿</span><strong>Flicka</strong><small>Välj egen frisyr</small></button></div>
+        <h2><span>02</span> Gör den till din</h2><label class="name-field" for="avatar-name">Vad heter din sovkompis?<input id="avatar-name" maxlength="24" placeholder="Ett namn du tycker om" autocomplete="off"></label>
+        <fieldset class="color-group"><legend>Frisyr</legend><div class="hairstyle-picker" id="hairstyles-3d" role="group" aria-label="Frisyr"></div></fieldset>
+        <fieldset class="color-group"><legend>Hårfärg</legend><div id="hair-swatches" class="companion-swatches"></div><label class="custom-color">Egen hårfärg <input id="hair-color" type="color" value="#594238" aria-label="Egen hårfärg"></label></fieldset>
+        <fieldset class="color-group"><legend>Hudfärg</legend><div id="skin-swatches" class="companion-swatches"></div><label class="custom-color">Egen hudfärg <input id="skin-color" type="color" value="#efb089" aria-label="Egen hudfärg"></label></fieldset>
+        <fieldset class="color-group"><legend>Klädfärg</legend><div id="clothes-swatches" class="companion-swatches"></div><label class="custom-color">Egen klädfärg <input id="clothes-color" type="color" value="#7fa99b" aria-label="Egen klädfärg"></label></fieldset>
+        <button class="text-button reset-colors" id="reset-colors">↺ Modellens originalfärger</button>
+        <button class="reward-3d text-button" id="star-pajamas" disabled aria-pressed="false">☆ Stjärnpyjamas · öva 3 gånger</button>
+        <button class="button primary companion-next" id="start-practice" disabled>Nu provar vi delarna →</button>
+        <p class="companion-save-note" id="save-note">Dina val sparas i den här webbläsaren.</p>
+      </section>
+      <section id="practice-panel-3d" class="panel companion-equipment" hidden aria-labelledby="equipment-title-3d"><div class="panel-title"><h2 id="equipment-title-3d">Dina delar</h2><span id="parts-count">0 av 8</span></div><p class="inventory-tip">Välj en del. Dra till figuren eller tryck på en plats.</p><div id="equipment-3d-list"></div><button class="text-button companion-back" id="edit-avatar">← Ändra din kompis</button></section>
+      <section id="complete-panel-3d" class="panel companion-end" hidden><div class="end-symbol">✦</div><div class="eyebrow">ALLA DELAR ÄR PÅ PLATS</div><h2>Bravo, du klarade det!</h2><p>Du och din sovkompis har lärt känna alla åtta delarna.</p><div class="companion-earned">+210 XP</div><p id="reward-message"></p><button class="button primary companion-next" id="go-sleep">Dags att sova ☾</button><button class="text-button companion-back" data-replay>Öva en gång till</button></section>
+      <section id="sleep-panel-3d" class="panel companion-end" hidden><div class="end-symbol">☾</div><div class="eyebrow">EN LUGN AVSLUTNING</div><h2>God natt,<br>lilla sovkompis.</h2><p>Din kompis kryper ner under filten och sluter ögonen. Alla delarna sitter kvar medan ni vilar.</p><p>Personalen finns där när det är din tur.</p><button class="button primary companion-next" data-replay>Öva en gång till ↻</button><button class="text-button companion-back" id="replay-bedtime">Se läggningen igen ↻</button><button class="text-button companion-back" id="sleep-edit">← Till din kompis</button><p id="sleep-score"></p></section>
+      <section class="companion-viewer" aria-label="Interaktiv 3D-figur">
+        <div class="viewer-heading"><span class="scene-name" id="model-name">Din sovkompis</span><span class="live-badge"><span></span> DIN KOMPIS</span></div>
+        <div id="three-container" tabindex="0" aria-label="3D-figur. Dra för att rotera. Nyp eller använd zoomknapparna. Piltangenter roterar, plus och minus zoomar."></div>
+        <div id="reaction-bubble" class="reaction-bubble" aria-hidden="true" hidden>Det kittlas!</div><div id="bedtime-caption" class="bedtime-caption" aria-hidden="true" hidden></div><div id="targets-3d" aria-label="Platser för utrustningen"></div><div id="sleep-symbols" aria-hidden="true" hidden><span>☾</span><i>z</i><i>z</i><i>z</i></div><div id="celebration-3d" aria-hidden="true" hidden></div>
+        <div class="load-state" id="load-state" role="status"><span class="loading-ring"></span><strong>Laddar din sovkompis…</strong><span>Modellen öppnas direkt i webbläsaren.</span></div>
+        <div class="viewer-tools" role="group" aria-label="Styr 3D-vyn"><button id="rotate-left" aria-label="Rotera åt vänster">↶</button><button id="rotate-right" aria-label="Rotera åt höger">↷</button><span></span><button id="zoom-in" aria-label="Zooma in">+</button><button id="zoom-out" aria-label="Zooma ut">−</button><span></span><button id="reset-view" aria-label="Visa figuren framifrån">Framifrån</button></div>
+        <p class="viewer-hint">Dra för att snurra · nyp för att zooma</p>
+      </section>
+      <aside class="companion-aside"><div id="companion-intro"><div class="small-spark">✧</div><h2>En kompis.<br>Hela vägen.</h2><p>Välj en frisyr, hudfärg och dina favoritkläder. Din kompis följer med hela vägen till en mysig god natt.</p><div class="companion-note"><strong>Prova i din egen takt</strong><p>När du är nöjd kan ni öva med delarna och sedan säga god natt. Du får prova hur många gånger du vill.</p></div></div><section id="coach-3d" hidden><div class="practice-progress"><div><strong>Du är på väg!</strong><span id="progress-label-3d">0/8 delar</span></div><div class="progress-track"><span id="progress-fill-3d"></span></div></div><div class="coach-card" id="coach-card-3d"><span class="card-overline" id="coach-overline">VI BÖRJAR HÄR</span><h2 id="coach-title">Vilken del vill du prova?</h2><p id="coach-copy">Välj en del i listan. Det finns ingen brådska.</p><button class="text-button" id="hint-3d" hidden>Visa mig var</button></div><p class="companion-clinical-note">Höger och vänster är din sovkompis sidor. Delarna visas förenklat över kläderna. Personalen visar hur de ska sitta på dig.</p></section><details class="developer-details"><summary>För utvecklare</summary><p>Två GLB-modeller med separata masker för hår, hud och kläder. Maskerna kombinerar geometri och originaltexturens färger.</p><label class="mask-toggle"><input type="checkbox" id="show-masks"> Visa färgmasker</label><div class="mask-key"><span><i class="hair-key"></i>Hår</span><span><i class="clothes-key"></i>Kläder</span><span><i class="skin-key"></i>Hud</span><span><i class="unchanged-key"></i>Oförändrat</span></div><label class="mask-toggle"><input type="checkbox" id="show-rig"> Visa rigg</label><button class="text-button" id="greet-3d">Prova en vinkning</button><p id="model-stats"></p><label class="motion-preview" for="sleep-preview">Granska sovrörelsen<select id="sleep-preview" disabled><option value="auto">Spela hela rörelsen</option><option value="0.32">Sitter på sängkanten</option><option value="0.50">Drar upp benen</option><option value="0.72">Lutar sig mot kudden</option><option value="0.90">Drar över filten</option><option value="1">Sover</option></select></label><p>En enkel rigg med 15 ben, inklusive knäleder, skapas för varje modell. Hår, händer, sensorer och kablar följer rörelserna. Utbytbara frisyrer följer huvudbenet. En ansiktsmask och ögonfransar ger slutna ögon i sovscenen. Masker, rigg och sensorplaceringar är anpassade för dessa modeller.</p></details></aside>
+    </div>
+    <section id="welcome-journey" class="journey-section" aria-labelledby="journey-title"><h2 id="journey-title">Tre små steg. Lite tryggare.</h2><div class="journey-cards"><article class="journey-card"><span class="journey-icon peach">✿</span><div><span class="card-overline">01 · SKAPA</span><h3>En kompis som är du</h3><p>Välj frisyr, hudfärg och dina favoritkläder.</p></div></article><article class="journey-card"><span class="journey-icon sage">✧</span><div><span class="card-overline">02 · UPPTÄCK</span><h3>Prova alla delarna</h3><p>Dra dem till din kompis och lär dig mer.</p></div></article><article class="journey-card"><span class="journey-icon lavender">☾</span><div><span class="card-overline">03 · FIRA</span><h3>Redo för en god natt</h3><p>Samla XP och lås upp något fint.</p></div></article></div></section>
+  </main>
+  <footer class="footer"><span>♡ En liten övning för en tryggare natt.</span><button class="text-button" id="about">Om Sovkompis</button><span class="local-note">Dina framsteg sparas i den här webbläsaren.</span></footer>
+</div>
+<div id="companion-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+<script type="module" src="./app.js?v=20261011-companion"></script>
+</body></html>
